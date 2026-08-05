@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace AiQueryBuilder\AiQueryBuilder;
 
+use AiQueryBuilder\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
+use AiQueryBuilder\AiQueryBuilder\Schema\SchemaRegistry;
+use Illuminate\Contracts\Config\Repository;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\ServiceProvider;
 
 class AiQueryBuilderServiceProvider extends ServiceProvider
@@ -16,6 +20,16 @@ class AiQueryBuilderServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/ai-query-builder.php', 'ai-query-builder');
 
         $this->app->singleton(AiQueryBuilder::class);
+
+        $this->app->singleton(SchemaRegistry::class, function (Container $app): SchemaRegistry {
+            /** @var Repository $config */
+            $config = $app->make(Repository::class);
+
+            /** @var list<class-string<DefinesQuerySchema>> $resources */
+            $resources = $config->get('ai-query-builder.resources', []);
+
+            return new SchemaRegistry($app, $resources);
+        });
     }
 
     /**
