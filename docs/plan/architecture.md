@@ -412,8 +412,22 @@ Introspects `Schema::getColumns()` / foreign keys / Eloquent relations and write
 - Aggregates suggested only for numeric columns, date bucketing only for date columns.
 - A `TODO: alwaysScope` stub, because tenant scoping cannot be inferred.
 
-Companions: `ai-query:describe {resource} --user=1` (dump the exact contract a user would see)
-and `ai-query:try {resource} "natural language"` for tuning.
+`ai-query:describe {resource} --user=1` dumps the exact contract a user would see, as prompt
+text or (`--json`) as JSON Schema. Reading a schema definition cannot tell you whether a gated
+column is really hidden from someone; this can. Omit the resource to list what is registered.
+
+`ai-query:try {resource} "natural language"` is not built — it needs an AI layer, which the
+package deliberately does not have. The equivalent without one is `QueryRunner::explain()`.
+
+### On the audit table
+
+The skeleton's placeholder migration is gone, along with the `ai-query-builder-migrations`
+publish tag: publishing a junk table into a consumer's app is worse than shipping nothing. A real
+opt-in query-history table remains worth building — replay, abuse detection, failure-rate
+analysis — but it needs deliberate answers on retention, indexing, whether rejected plans are
+stored too, and redaction of bound values that may hold personal data. Guessing those is how a
+package ends up with a table nobody trusts. Until then `QueryPlanExecuted` carries everything
+such a table would.
 
 ## 10. Additional ideas worth considering
 
@@ -444,7 +458,7 @@ and `ai-query:try {resource} "natural language"` for tuning.
 | 3 | ✅ **Done.** `PlanCompiler` + mandatory scopes + the filter-nesting guarantee. |
 | 4 | ✅ **Done.** `QueryRunner`, guardrails, events, audit. |
 | 5 | ✅ **Done.** Contract layer + Laravel AI SDK tool adapter. |
-| 6 | Generator + describe commands. |
+| 6 | ✅ **Done.** Generator + describe commands. |
 | 7 | Publishable endpoint, README, Boost skill regeneration. |
 
 Phases 1–4 have no AI dependency at all and are fully testable with Testbench + workbench models.

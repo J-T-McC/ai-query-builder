@@ -9,6 +9,8 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\ServiceProvider;
 use JTMcC\AiQueryBuilder\Compilation\PlanCompiler;
+use JTMcC\AiQueryBuilder\Console\DescribeSchemaCommand;
+use JTMcC\AiQueryBuilder\Console\MakeSchemaCommand;
 use JTMcC\AiQueryBuilder\Execution\QueryRunner;
 use JTMcC\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
 use JTMcC\AiQueryBuilder\Schema\SchemaRegistry;
@@ -73,12 +75,13 @@ class AiQueryBuilderServiceProvider extends ServiceProvider
             return;
         }
 
+        $this->commands([
+            DescribeSchemaCommand::class,
+            MakeSchemaCommand::class,
+        ]);
+
         $this->publishes([
             __DIR__.'/../config/ai-query-builder.php' => config_path('ai-query-builder.php'),
         ], ['ai-query-builder', 'ai-query-builder-config']);
-
-        $this->publishesMigrations([
-            __DIR__.'/../database/migrations' => database_path('migrations'),
-        ], ['ai-query-builder', 'ai-query-builder-migrations']);
     }
 }

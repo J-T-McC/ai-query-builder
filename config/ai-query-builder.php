@@ -44,4 +44,34 @@ return [
 
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Schema Generator
+    |--------------------------------------------------------------------------
+    |
+    | Columns matching any of these patterns are left out of a generated schema
+    | draft entirely rather than being scaffolded commented out, so that
+    | uncommenting a block wholesale cannot expose them. Patterns use Str::is.
+    |
+    */
+
+    'generator' => [
+
+        'sensitive_columns' => [
+            'password',
+            'remember_token',
+            'secret',
+            '*_secret',
+            '*_token',
+            '*_hash',
+            '*_key',
+            'two_factor_*',
+            'ssn',
+            'social_security_number',
+            'card_number',
+            'cvv',
+        ],
+
+    ],
+
 ];

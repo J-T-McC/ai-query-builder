@@ -34,30 +34,3 @@ Or, you may publish each resource individually:
 php artisan vendor:publish --tag="ai-query-builder-config"
 ```
 
-### Publishing and Running the Migrations
-
-```bash
-php artisan vendor:publish --tag="ai-query-builder-migrations"
-php artisan migrate
-```
-
-## Usage
-
-<!-- Add a basic usage example here. -->
-
-## Changelog
-
-Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
-
-## Contributing
-
-Thank you for considering contributing to Ai Query Builder! Please review our [contributing guide](.github/CONTRIBUTING.md) to get started.
-
-## Credits
-
-- [Tyson McCarney](https://github.com/j-t-mcc)
-- [All Contributors](../../contributors)
-
-## License
-
-Ai Query Builder is open-sourced software licensed under the [MIT license](LICENSE.md).
