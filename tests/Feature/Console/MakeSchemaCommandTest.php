@@ -15,7 +15,7 @@ beforeEach(function () {
 
 afterEach(function () {
     if (is_dir($this->target)) {
-        array_map('unlink', glob($this->target.'/*.php') ?: []);
+        array_map('unlink', glob($this->target.DIRECTORY_SEPARATOR.'*.php') ?: []);
         rmdir($this->target);
     }
 });
@@ -26,7 +26,7 @@ function generate(string $path, string $model, array $options = []): string
 
     expect($status)->toBe(0, Artisan::output());
 
-    return (string) file_get_contents($path.'/'.class_basename($model).'QuerySchema.php');
+    return (string) file_get_contents($path.DIRECTORY_SEPARATOR.class_basename($model).'QuerySchema.php');
 }
 
 it('writes a class bound to the model and table', function () {
@@ -87,10 +87,12 @@ it('leaves a mandatory scope stub that must be filled in', function () {
 });
 
 it('produces a file that parses', function () {
-    $path = $this->target.'/InvoiceQuerySchema.php';
+    $path = $this->target.DIRECTORY_SEPARATOR.'InvoiceQuerySchema.php';
     generate($this->target, Invoice::class);
 
-    exec('php -l '.escapeshellarg($path), $output, $status);
+    // PHP_BINARY rather than "php": the CI runner's PATH is not guaranteed,
+    // and this test also runs on Windows.
+    exec(escapeshellarg(PHP_BINARY).' -l '.escapeshellarg($path), $output, $status);
 
     expect($status)->toBe(0);
 });

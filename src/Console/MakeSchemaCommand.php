@@ -111,7 +111,9 @@ final class MakeSchemaCommand extends Command
             $directory = app_path('AiQueries');
         }
 
-        return rtrim($directory, '/').'/'.$name.'.php';
+        // Trim both separators so a Windows path ending in a backslash does not
+        // produce a doubled separator.
+        return rtrim($directory, '/\\').DIRECTORY_SEPARATOR.$name.'.php';
     }
 
     /**
