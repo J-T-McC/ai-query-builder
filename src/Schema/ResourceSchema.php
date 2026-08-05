@@ -40,6 +40,10 @@ final class ResourceSchema
 
     private int $maxRelationDepth = 2;
 
+    private int $maxFilterDepth = 5;
+
+    private int $maxFilterNodes = 50;
+
     public static function make(): self
     {
         return new self;
@@ -128,6 +132,26 @@ final class ResourceSchema
         return $this;
     }
 
+    /**
+     * How deeply filter groups may nest. A cost proxy, not a correctness bound.
+     */
+    public function maxFilterDepth(int $depth): self
+    {
+        $this->maxFilterDepth = $depth;
+
+        return $this;
+    }
+
+    /**
+     * How many conditions and groups a filter tree may contain in total.
+     */
+    public function maxFilterNodes(int $nodes): self
+    {
+        $this->maxFilterNodes = $nodes;
+
+        return $this;
+    }
+
     public function limits(): Limits
     {
         return new Limits(
@@ -135,6 +159,8 @@ final class ResourceSchema
             max: $this->maxLimit,
             maxGroups: $this->maxGroups,
             maxRelationDepth: $this->maxRelationDepth,
+            maxFilterDepth: $this->maxFilterDepth,
+            maxFilterNodes: $this->maxFilterNodes,
         );
     }
 

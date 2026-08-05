@@ -127,6 +127,30 @@ trait DefinesStructure
     }
 
     /**
+     * Every column path visible to this user, including those behind relations.
+     *
+     * Drives both the contract handed to an agent and the "did you mean"
+     * suggestions on validation errors, so a hidden column can never leak
+     * through a suggestion.
+     *
+     * @return list<string>
+     */
+    public function columnPaths(?Authenticatable $user, string $prefix = ''): array
+    {
+        $paths = [];
+
+        foreach ($this->visibleColumns($user) as $name => $column) {
+            $paths[] = $prefix.$name;
+        }
+
+        foreach ($this->relations as $name => $relation) {
+            $paths = [...$paths, ...$relation->columnPaths($user, $prefix.$name.'.')];
+        }
+
+        return $paths;
+    }
+
+    /**
      * Walk the declared relation segments, stopping at the first undeclared one.
      *
      * @param  list<string>  $segments

@@ -250,7 +250,10 @@ final class PlanCompiler
         $this->applySelects($query, $plan, $schema);
         // ...
 
-        $query->limit(min($plan->limit ?? $schema->defaultLimit(), $schema->maxLimit()));
+        // The limit is already validated against maxLimit; an over-max limit is
+        // rejected rather than clamped, so a plan never quietly returns fewer
+        // rows than it asked for. Re-applying the ceiling here is defence in depth.
+        $query->limit(min($plan->limit, $schema->limits()->max));
 
         return $query;
     }
@@ -385,7 +388,7 @@ and `ai-query:try {resource} "natural language"` for tuning.
 | Phase | Deliverable |
 |---|---|
 | 1 | ✅ **Done.** `ResourceSchema` + column/relation definitions + registry. |
-| 2 | `QueryPlan` + `PlanValidator` with structured errors. Heaviest test surface. |
+| 2 | ✅ **Done.** `QueryPlan` + `PlanValidator` with structured errors. |
 | 3 | `PlanCompiler` + mandatory scopes + the filter-nesting guarantee. Tests assert generated SQL. |
 | 4 | `QueryRunner`, guardrails, events, audit. |
 | 5 | Laravel AI SDK adapters, behind `interface_exists`. |
