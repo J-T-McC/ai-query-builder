@@ -1,6 +1,6 @@
 # AI Query Builder — Architecture Plan
 
-**Status:** draft for review
+**Status:** implemented through phase 7
 **Package:** `j-t-mcc/ai-query-builder`
 
 ## 1. The core idea
@@ -112,8 +112,7 @@ class InvoiceQuerySchema implements DefinesQuerySchema
 
             // ---- limits -------------------------------------------------------------
             ->defaultLimit(100)
-            ->maxLimit(1000)
-            ->maxGroups(500);
+            ->maxLimit(1000);
     }
 }
 ```
@@ -459,7 +458,7 @@ such a table would.
 | 4 | ✅ **Done.** `QueryRunner`, guardrails, events, audit. |
 | 5 | ✅ **Done.** Contract layer + Laravel AI SDK tool adapter. |
 | 6 | ✅ **Done.** Generator + describe commands. |
-| 7 | Publishable endpoint, README, Boost skill regeneration. |
+| 7 | ✅ **Done.** HTTP endpoint, README, Boost skill. |
 
 Phases 1–4 have no AI dependency at all and are fully testable with Testbench + workbench models.
 

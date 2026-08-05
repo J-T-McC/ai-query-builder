@@ -12,7 +12,6 @@ final readonly class Limits
     public function __construct(
         public int $default = 100,
         public int $max = 1000,
-        public int $maxGroups = 500,
         public int $maxRelationDepth = 2,
         public int $maxFilterDepth = 5,
         public int $maxFilterNodes = 50,

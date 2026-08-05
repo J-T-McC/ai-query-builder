@@ -36,8 +36,6 @@ final class ResourceSchema
 
     private int $maxLimit = 1000;
 
-    private int $maxGroups = 500;
-
     private int $maxRelationDepth = 2;
 
     private int $maxFilterDepth = 5;
@@ -118,13 +116,6 @@ final class ResourceSchema
         return $this;
     }
 
-    public function maxGroups(int $groups): self
-    {
-        $this->maxGroups = $groups;
-
-        return $this;
-    }
-
     public function maxRelationDepth(int $depth): self
     {
         $this->maxRelationDepth = $depth;
@@ -157,7 +148,6 @@ final class ResourceSchema
         return new Limits(
             default: $this->defaultLimit,
             max: $this->maxLimit,
-            maxGroups: $this->maxGroups,
             maxRelationDepth: $this->maxRelationDepth,
             maxFilterDepth: $this->maxFilterDepth,
             maxFilterNodes: $this->maxFilterNodes,

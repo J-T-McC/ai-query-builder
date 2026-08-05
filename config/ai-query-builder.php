@@ -46,6 +46,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | HTTP Endpoint
+    |--------------------------------------------------------------------------
+    |
+    | An opt-in POST {prefix}/{resource}/query endpoint that runs a plan sent as
+    | a JSON body and returns rows. Disabled by default: whether to expose an
+    | HTTP surface at all, and behind which middleware, is your decision.
+    |
+    | The middleware listed here is the only thing standing between the internet
+    | and this endpoint. Authenticate it.
+    |
+    */
+
+    'routes' => [
+
+        'enabled' => false,
+
+        'prefix' => 'ai-query',
+
+        'middleware' => ['api', 'auth'],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Schema Generator
     |--------------------------------------------------------------------------
     |

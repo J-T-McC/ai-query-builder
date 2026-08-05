@@ -105,7 +105,6 @@ it('applies limit defaults', function () {
 
     expect($limits->default)->toBe(100)
         ->and($limits->max)->toBe(1000)
-        ->and($limits->maxGroups)->toBe(500)
         ->and($limits->maxRelationDepth)->toBe(2);
 });
 
@@ -115,13 +114,11 @@ it('allows limits to be overridden', function () {
         ->name('users')
         ->maxLimit(50)
         ->defaultLimit(25)
-        ->maxGroups(10)
         ->maxRelationDepth(1)
         ->limits();
 
     expect($limits->default)->toBe(25)
         ->and($limits->max)->toBe(50)
-        ->and($limits->maxGroups)->toBe(10)
         ->and($limits->maxRelationDepth)->toBe(1);
 });
 
