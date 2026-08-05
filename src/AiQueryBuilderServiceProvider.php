@@ -6,9 +6,13 @@ namespace JTMcC\AiQueryBuilder;
 
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\ServiceProvider;
+use JTMcC\AiQueryBuilder\Compilation\PlanCompiler;
+use JTMcC\AiQueryBuilder\Execution\QueryRunner;
 use JTMcC\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
 use JTMcC\AiQueryBuilder\Schema\SchemaRegistry;
+use JTMcC\AiQueryBuilder\Validation\PlanValidator;
 
 class AiQueryBuilderServiceProvider extends ServiceProvider
 {
@@ -29,6 +33,32 @@ class AiQueryBuilderServiceProvider extends ServiceProvider
             $resources = $config->get('ai-query-builder.resources', []);
 
             return new SchemaRegistry($app, $resources);
+        });
+
+        // Bound rather than shared: the fluent setters clone, but a fresh
+        // instance per resolve keeps configured defaults unambiguous.
+        $this->app->bind(QueryRunner::class, function (Container $app): QueryRunner {
+            /** @var Repository $config */
+            $config = $app->make(Repository::class);
+
+            /** @var string|null $connection */
+            $connection = $config->get('ai-query-builder.execution.connection');
+
+            /** @var int|null $timeout */
+            $timeout = $config->get('ai-query-builder.execution.timeout');
+
+            /** @var int $maxRows */
+            $maxRows = $config->get('ai-query-builder.execution.max_rows', 1000);
+
+            return new QueryRunner(
+                $app->make(SchemaRegistry::class),
+                $app->make(PlanValidator::class),
+                $app->make(PlanCompiler::class),
+                $app->make(Dispatcher::class),
+                connection: $connection,
+                timeout: $timeout,
+                maxRows: $maxRows,
+            );
         });
     }
 

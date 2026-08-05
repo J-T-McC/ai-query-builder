@@ -19,4 +19,29 @@ return [
         //
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Execution Guardrails
+    |--------------------------------------------------------------------------
+    |
+    | Defaults applied to every query run through the QueryRunner. Each can be
+    | overridden per call. Pointing "connection" at a read-only replica means a
+    | compiler bug cannot write, no matter what a plan asks for.
+    |
+    | "timeout" is in milliseconds and is enforced with a statement timeout.
+    | Only pgsql, mysql and mariadb can enforce one; on any other driver a
+    | non-null timeout raises rather than being silently ignored.
+    |
+    */
+
+    'execution' => [
+
+        'connection' => null,
+
+        'timeout' => null,
+
+        'max_rows' => 1000,
+
+    ],
+
 ];

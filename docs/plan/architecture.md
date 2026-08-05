@@ -299,20 +299,42 @@ final class PlanCompiler
 
 ## 7. Execution guardrails
 
+`QueryRunner` is resolved from the container, so it picks up configured defaults. Its setters
+clone, so a configured runner never leaks settings into the next call.
+
 ```php
-$result = QueryRunner::for($plan)
+$result = app(QueryRunner::class)
     ->as($user)
     ->connection('analytics_readonly')  // opt-in read-only connection
-    ->timeout(5_000)                    // statement timeout
+    ->timeout(5_000)                    // statement timeout, milliseconds
     ->maxRows(1_000)
-    ->run();
+    ->withPrompt($prompt)               // carried into the audit events
+    ->run($plan);                       // $plan is the untrusted array
 ```
 
-- Fires `QueryPlanValidated`, `QueryPlanRejected`, `QueryPlanExecuted` events.
-- Audit record: user, prompt (optional), plan JSON, compiled SQL + bindings, row count,
-  duration, decision. Values redactable.
-- `->explain()` returns SQL without executing — for human-in-the-loop approval.
-- Identical plan + user + scope → cacheable.
+- **Truncation is explicit.** The runner fetches one row beyond the cap so a full result can be
+  told apart from a capped one, and `ResultSet::$truncated` says which it was. A silently capped
+  result reads as a complete answer.
+- **Column metadata travels with the rows.** `ResultSet::$columns` carries each alias's unit and
+  description, because a number without its unit is how a model reports cents as dollars.
+- **Timeouts fail loud.** Only pgsql, mysql and mariadb can enforce a statement timeout. On any
+  other driver a non-null timeout raises rather than being quietly ignored — otherwise the caller
+  believes a guardrail is in place when it is not.
+- **`->explain($plan)`** validates and compiles but does not execute, returning SQL and bindings
+  for human-in-the-loop approval or logging.
+
+### The audit record is an event
+
+`QueryPlanExecuted` carries the plan, the SQL and bindings it became, the acting user, the
+prompt, row count, duration and the truncation flag. The package does not persist it and ships no
+migration: what to store, how long to keep it, and what to redact are decisions only the host
+application can make.
+
+`QueryPlanValidated` fires after validation and before compilation — that is the hook for an
+approval gate. `QueryPlanRejected` carries the error codes (§5.1).
+
+Not yet implemented, and still worth having: per-user rate limiting, and caching an identical
+plan + user + scope.
 
 ## 8. AI integration — three doors, all optional
 
@@ -345,9 +367,9 @@ class QueryDataTool implements Tool
 
     public function handle(Request $request): string
     {
-        return QueryRunner::fromArray($request->toArray())
+        return app(QueryRunner::class)
             ->as($this->user)
-            ->run()
+            ->run($request->toArray())
             ->toJson();   // on validation failure: structured errors, so the model retries
     }
 }
@@ -378,7 +400,7 @@ HasStructuredOutput` whose `schema()` is the generated JSON Schema.
 
 ```php
 $plan = json_decode($whateverYourLlmReturned, true);
-$rows = QueryRunner::fromArray($plan)->as($user)->run();
+$rows = app(QueryRunner::class)->as($user)->run($plan);
 ```
 
 Plus a publishable controller + route for the "just give me an endpoint" case, off by default.
@@ -427,7 +449,7 @@ and `ai-query:try {resource} "natural language"` for tuning.
 | 1 | ✅ **Done.** `ResourceSchema` + column/relation definitions + registry. |
 | 2 | ✅ **Done.** `QueryPlan` + `PlanValidator` with structured errors. |
 | 3 | ✅ **Done.** `PlanCompiler` + mandatory scopes + the filter-nesting guarantee. |
-| 4 | `QueryRunner`, guardrails, events, audit. |
+| 4 | ✅ **Done.** `QueryRunner`, guardrails, events, audit. |
 | 5 | Laravel AI SDK adapters, behind `interface_exists`. |
 | 6 | Generator + describe commands. |
 | 7 | Publishable endpoint, README, Boost skill regeneration. |

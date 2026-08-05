@@ -37,14 +37,20 @@ use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 final class PlanCompiler
 {
     /**
+     * @param  string|null  $connection  Overrides the model's connection, so a plan can be
+     *                                   pointed at a read-only replica.
      * @return Builder<Model>
      */
-    public function compile(QueryPlan $plan, ResourceSchema $schema, ?Authenticatable $user = null): Builder
-    {
+    public function compile(
+        QueryPlan $plan,
+        ResourceSchema $schema,
+        ?Authenticatable $user = null,
+        ?string $connection = null,
+    ): Builder {
         $model = $schema->model() ?? throw CompilationException::missingModel($plan->resource);
 
         /** @var Builder<Model> $query */
-        $query = $model::query();
+        $query = $connection === null ? $model::query() : $model::on($connection);
 
         // Mandatory scopes first, at the outermost level of the WHERE clause.
         foreach ($schema->alwaysScopes() as $scope) {
