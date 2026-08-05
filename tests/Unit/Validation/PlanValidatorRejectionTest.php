@@ -124,6 +124,15 @@ it('rejects having against something that is not an aggregated alias', function 
     expect($errors['having.0.column']->code)->toBe(ValidationCode::UnknownAlias);
 });
 
+it('rejects a having operator that is not meaningful after aggregation', function () {
+    $errors = rejectPlan([
+        'select' => [['column' => 'total', 'function' => 'sum', 'as' => 'total_sum']],
+        'having' => [['column' => 'total_sum', 'operator' => 'like', 'value' => '5%']],
+    ]);
+
+    expect($errors['having.0.operator']->code)->toBe(ValidationCode::OperatorNotAllowed);
+});
+
 it('rejects duplicate select aliases', function () {
     $errors = rejectPlan([
         'select' => [

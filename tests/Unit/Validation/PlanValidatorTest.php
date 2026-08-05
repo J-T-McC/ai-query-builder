@@ -13,7 +13,7 @@ it('validates the worked example from the architecture plan', function () {
         'resource' => 'invoices',
         'select' => [
             ['column' => 'lines.product.type', 'as' => 'product_type'],
-            ['column' => 'total', 'function' => 'sum', 'as' => 'total_sum'],
+            ['column' => 'lines.quantity', 'function' => 'sum', 'as' => 'total_qty'],
         ],
         'filters' => [
             'operator' => 'and',
@@ -23,19 +23,19 @@ it('validates the worked example from the architecture plan', function () {
             ],
         ],
         'group_by' => [['column' => 'lines.product.type']],
-        'having' => [['column' => 'total_sum', 'operator' => '>', 'value' => 0]],
-        'sort' => [['column' => 'total_sum', 'direction' => 'desc']],
+        'having' => [['column' => 'total_qty', 'operator' => '>', 'value' => 0]],
+        'sort' => [['column' => 'total_qty', 'direction' => 'desc']],
         'limit' => 50,
     ]);
 
     expect($plan->resource)->toBe('invoices')
         ->and($plan->select)->toHaveCount(2)
         ->and($plan->select[1]->function)->toBe(Aggregate::Sum)
-        ->and($plan->select[1]->alias)->toBe('total_sum')
+        ->and($plan->select[1]->alias)->toBe('total_qty')
         ->and($plan->filters?->operator)->toBe(LogicalOperator::And)
         ->and($plan->filters?->conditions)->toHaveCount(2)
         ->and($plan->groupBy[0]->path)->toBe('lines.product.type')
-        ->and($plan->having[0]->alias)->toBe('total_sum')
+        ->and($plan->having[0]->alias)->toBe('total_qty')
         ->and($plan->sort[0]->direction)->toBe(SortDirection::Desc)
         ->and($plan->sort[0]->isAlias())->toBeTrue()
         ->and($plan->limit)->toBe(50)

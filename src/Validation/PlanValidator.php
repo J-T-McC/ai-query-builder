@@ -69,6 +69,27 @@ final class PlanValidator
      */
     private const array LIST_OPERATORS = [Operator::In, Operator::NotIn, Operator::Between];
 
+    /**
+     * Operators permitted after aggregation.
+     *
+     * Set membership and pattern matching are excluded: they are not meaningful
+     * against an aggregate, and supporting them would mean generating raw SQL
+     * for the having clause.
+     *
+     * @var list<Operator>
+     */
+    private const array HAVING_OPERATORS = [
+        Operator::Equals,
+        Operator::NotEquals,
+        Operator::GreaterThan,
+        Operator::GreaterThanOrEqual,
+        Operator::LessThan,
+        Operator::LessThanOrEqual,
+        Operator::Between,
+        Operator::IsNull,
+        Operator::IsNotNull,
+    ];
+
     /** @var list<ValidationError> */
     private array $errors = [];
 
@@ -495,11 +516,15 @@ final class PlanValidator
 
             $operator = Operator::tryFrom(is_string($entry['operator'] ?? null) ? $entry['operator'] : '');
 
-            if ($operator === null) {
+            if ($operator === null || ! in_array($operator, self::HAVING_OPERATORS, strict: true)) {
                 $this->error(
                     "{$path}.operator",
                     ValidationCode::OperatorNotAllowed,
-                    sprintf('The operator [%s] is not recognised.', $this->describe($entry['operator'] ?? null)),
+                    sprintf(
+                        'The operator [%s] is not permitted in having. Permitted: %s.',
+                        $this->describe($entry['operator'] ?? null),
+                        implode(', ', array_column(self::HAVING_OPERATORS, 'value')),
+                    ),
                 );
 
                 continue;

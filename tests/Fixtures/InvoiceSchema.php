@@ -8,20 +8,18 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
 use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
-use Workbench\App\Models\User;
+use Workbench\App\Models\Invoice;
 
 /**
- * A representative schema exercising every capability the validator checks.
- *
- * The model is a stand-in: phase 2 never touches the database, so only the
- * declared structure matters here.
+ * A representative schema exercising every capability the validator and the
+ * compiler check, backed by the workbench invoice tables.
  */
 final class InvoiceSchema
 {
     public static function make(): ResourceSchema
     {
         return ResourceSchema::make()
-            ->for(User::class)
+            ->for(Invoice::class)
             ->name('invoices')
             ->describe('Customer invoices, one row per invoice.')
             ->column('id', fn (ColumnDefinition $c) => $c->as('invoice_id')->sortable())

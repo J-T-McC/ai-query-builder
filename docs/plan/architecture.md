@@ -140,7 +140,7 @@ becomes:
   "resource": "invoices",
   "select": [
     { "column": "lines.product.type", "as": "product_type" },
-    { "column": "total", "function": "sum", "as": "total_sum" }
+    { "column": "lines.quantity", "function": "sum", "as": "total_qty" }
   ],
   "filters": {
     "operator": "and",
@@ -150,8 +150,8 @@ becomes:
     ]
   },
   "group_by": [{ "column": "lines.product.type" }],
-  "having": [{ "column": "total_sum", "operator": ">", "value": 0 }],
-  "sort": [{ "column": "total_sum", "direction": "desc" }],
+  "having": [{ "column": "total_qty", "operator": ">", "value": 0 }],
+  "sort": [{ "column": "total_qty", "direction": "desc" }],
   "limit": 50
 }
 ```
@@ -162,6 +162,24 @@ Notes:
   derives it from the declared relations. The AI cannot express a join.
 - `value` is always data, always bound as a parameter, never interpolated.
 - There is no `raw`, no `expression`, no `sql` key. Not even behind a config flag.
+
+### The fan-out trap
+
+An earlier draft of this example aggregated `total` — the *invoice* total — while joining to
+`lines`. That is wrong, and wrong in the most dangerous way: it returns a plausible number.
+
+An invoice with three line items appears three times once joined, so `SUM(invoices.total)` counts
+it three times. Nothing errors. The agent reports a confident, inflated figure.
+
+The compiler refuses to build it (§6.1). The example above aggregates `lines.quantity` instead,
+which sits on the same side of the join as the fan-out and is therefore counted once per row.
+
+This also affects the phrasing that motivated the package — *"the sum of all invoices … only for
+this product type"*. Summing invoice totals while **filtering** on a to-many relation fans out for
+exactly the same reason. Compiling relation-only filters to an `EXISTS` subquery instead of a join
+solves it properly and means what the question actually means (*invoices having at least one
+widget line*). That is in the v2 backlog; until then the compiler rejects the plan rather than
+answering it wrongly.
 
 ## 5. Validation — the security boundary
 
@@ -259,6 +277,25 @@ final class PlanCompiler
     }
 }
 ```
+
+## 6.1 Compilation decisions
+
+- **Left joins.** A parent with no related rows is kept. A relation's own `alwaysScope` is applied
+  as an `ON` condition rather than a `WHERE`, which would silently turn it into an inner join.
+- **Eloquent global scopes do not apply to joins.** A `SoftDeletes` scope on a *joined* model is
+  not applied by the database — Laravel only adds it to the root query. Anything that must hold
+  for joined rows belongs in that relation's `alwaysScope`. This is a sharp edge worth documenting
+  for users.
+- **Fan-out guard.** Aggregating a column that sits above a to-many join is refused
+  (`CompilationException`), because the result would be silently multiplied. See §4.
+- **`having` operators are restricted** to comparisons, `between` and null checks. Set membership
+  and pattern matching are not meaningful against an aggregate, and supporting them would mean
+  generating raw SQL for the having clause.
+- **`SqlFragment`.** Laravel types its raw-SQL entry points as `literal-string` to stop
+  applications building SQL from runtime data. A query compiler cannot satisfy that, so the
+  package owns a single `Expression` implementation and every generated fragment goes through it.
+  The invariant: fragments are built only from schema-declared identifiers wrapped by the
+  connection grammar; plan values are always bound.
 
 ## 7. Execution guardrails
 
@@ -389,7 +426,7 @@ and `ai-query:try {resource} "natural language"` for tuning.
 |---|---|
 | 1 | ✅ **Done.** `ResourceSchema` + column/relation definitions + registry. |
 | 2 | ✅ **Done.** `QueryPlan` + `PlanValidator` with structured errors. |
-| 3 | `PlanCompiler` + mandatory scopes + the filter-nesting guarantee. Tests assert generated SQL. |
+| 3 | ✅ **Done.** `PlanCompiler` + mandatory scopes + the filter-nesting guarantee. |
 | 4 | `QueryRunner`, guardrails, events, audit. |
 | 5 | Laravel AI SDK adapters, behind `interface_exists`. |
 | 6 | Generator + describe commands. |
@@ -415,6 +452,10 @@ Phases 1–4 have no AI dependency at all and are fully testable with Testbench 
 - Cursor pagination
 - Opt-in bounded retries (§5.1)
 - Declared join edges between unrelated roots (below)
+- `EXISTS` subqueries for relation-only filters, so aggregating a parent column while filtering on
+  a to-many relation stops being a fan-out (§4)
+- `BelongsToMany` traversal — currently unsupported, and rejected explicitly rather than
+  compiled into something subtly wrong
 
 ### Caveat on joins
 
