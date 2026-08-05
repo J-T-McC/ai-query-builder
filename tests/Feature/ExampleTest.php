@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AiQueryBuilder\AiQueryBuilder\AiQueryBuilder;
+use JTMcC\AiQueryBuilder\AiQueryBuilder;
 
 it('resolves the singleton', function () {
     expect(app(AiQueryBuilder::class))->toBeInstanceOf(AiQueryBuilder::class);
@@ -13,5 +13,5 @@ it('returns the same instance from the container', function () {
 });
 
 it('merges the package config', function () {
-    expect(config('ai-query-builder.placeholder'))->toBe('default');
+    expect(config('ai-query-builder.resources'))->toBe([]);
 });

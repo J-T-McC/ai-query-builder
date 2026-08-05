@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder;
+namespace JTMcC\AiQueryBuilder;
 
 class AiQueryBuilder
 {

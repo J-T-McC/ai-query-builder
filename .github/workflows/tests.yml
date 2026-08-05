@@ -23,11 +23,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         php: [8.3, 8.4, 8.5]
-        laravel: [12.*, 13.*]
+        laravel: [13.*]
         stability: [prefer-lowest, prefer-stable]
         include:
-          - laravel: 12.*
-            testbench: 10.*
           - laravel: 13.*
             testbench: 11.*
 
@@ -45,6 +43,20 @@ jobs:
           ini-values: error_reporting=E_ALL
           tools: composer:v2
           coverage: none
+
+      - name: Resolve Composer cache directory
+        id: composer-cache
+        shell: bash
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ matrix.os }}-${{ matrix.php }}-L${{ matrix.laravel }}-${{ matrix.stability }}-${{ hashFiles('composer.json') }}
+          restore-keys: |
+            composer-${{ matrix.os }}-${{ matrix.php }}-L${{ matrix.laravel }}-${{ matrix.stability }}-
+            composer-${{ matrix.os }}-${{ matrix.php }}-L${{ matrix.laravel }}-
 
       - name: Install dependencies
         run: |
