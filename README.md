@@ -31,6 +31,12 @@ user prompt ──▶ [ your AI layer ] ──▶ query plan (untrusted JSON)
                                           EXECUTE (guarded) ──▶ rows
 ```
 
+## Requirements
+
+PHP 8.3+ and Laravel 13.16+. The AI adapter builds its schema with
+`Illuminate\JsonSchema`, whose `anyOf()` the nested filter schema depends on, and that
+arrived in 13.16.
+
 ## Installation
 
 ```bash
