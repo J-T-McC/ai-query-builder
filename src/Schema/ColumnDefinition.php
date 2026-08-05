@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder\Schema;
+namespace JTMcC\AiQueryBuilder\Schema;
 
-use AiQueryBuilder\AiQueryBuilder\Exceptions\SchemaDefinitionException;
-use AiQueryBuilder\AiQueryBuilder\Schema\Enums\Aggregate;
-use AiQueryBuilder\AiQueryBuilder\Schema\Enums\DateBucket;
-use AiQueryBuilder\AiQueryBuilder\Schema\Enums\Operator;
 use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
+use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
+use JTMcC\AiQueryBuilder\Schema\Enums\Aggregate;
+use JTMcC\AiQueryBuilder\Schema\Enums\DateBucket;
+use JTMcC\AiQueryBuilder\Schema\Enums\Operator;
 
 /**
  * A single column exposed to an AI agent.

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder\Tests;
+namespace JTMcC\AiQueryBuilder\Tests;
 
-use AiQueryBuilder\AiQueryBuilder\AiQueryBuilderServiceProvider;
+use JTMcC\AiQueryBuilder\AiQueryBuilderServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 abstract class TestCase extends Orchestra

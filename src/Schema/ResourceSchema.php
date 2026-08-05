@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder\Schema;
+namespace JTMcC\AiQueryBuilder\Schema;
 
-use AiQueryBuilder\AiQueryBuilder\Exceptions\SchemaDefinitionException;
-use AiQueryBuilder\AiQueryBuilder\Schema\Concerns\DefinesStructure;
 use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
+use JTMcC\AiQueryBuilder\Schema\Concerns\DefinesStructure;
 
 /**
  * The allow-list for one queryable resource.

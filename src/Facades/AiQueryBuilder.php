@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder\Facades;
+namespace JTMcC\AiQueryBuilder\Facades;
 
 use Illuminate\Support\Facades\Facade;
 
 /**
- * @see \AiQueryBuilder\AiQueryBuilder\AiQueryBuilder
+ * @see \JTMcC\AiQueryBuilder\AiQueryBuilder
  */
 class AiQueryBuilder extends Facade
 {
     protected static function getFacadeAccessor(): string
     {
-        return \AiQueryBuilder\AiQueryBuilder\AiQueryBuilder::class;
+        return \JTMcC\AiQueryBuilder\AiQueryBuilder::class;
     }
 }

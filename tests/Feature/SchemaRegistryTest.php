@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use AiQueryBuilder\AiQueryBuilder\Exceptions\SchemaDefinitionException;
-use AiQueryBuilder\AiQueryBuilder\Exceptions\UnknownResourceException;
-use AiQueryBuilder\AiQueryBuilder\Schema\ColumnDefinition;
-use AiQueryBuilder\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
-use AiQueryBuilder\AiQueryBuilder\Schema\ResourceSchema;
-use AiQueryBuilder\AiQueryBuilder\Schema\SchemaRegistry;
+use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
+use JTMcC\AiQueryBuilder\Exceptions\UnknownResourceException;
+use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
+use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
+use JTMcC\AiQueryBuilder\Schema\SchemaRegistry;
 use Workbench\App\Models\User;
 
 final class UserQuerySchema implements DefinesQuerySchema

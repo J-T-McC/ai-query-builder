@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder\Schema;
+namespace JTMcC\AiQueryBuilder\Schema;
 
 /**
  * Ceilings a query plan is clamped to at compile time.

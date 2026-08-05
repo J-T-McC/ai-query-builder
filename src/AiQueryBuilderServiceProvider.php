@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder;
+namespace JTMcC\AiQueryBuilder;
 
-use AiQueryBuilder\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
-use AiQueryBuilder\AiQueryBuilder\Schema\SchemaRegistry;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\ServiceProvider;
+use JTMcC\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
+use JTMcC\AiQueryBuilder\Schema\SchemaRegistry;
 
 class AiQueryBuilderServiceProvider extends ServiceProvider
 {

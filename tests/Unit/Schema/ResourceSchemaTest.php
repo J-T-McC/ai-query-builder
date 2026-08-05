@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use AiQueryBuilder\AiQueryBuilder\Exceptions\SchemaDefinitionException;
-use AiQueryBuilder\AiQueryBuilder\Schema\ColumnDefinition;
-use AiQueryBuilder\AiQueryBuilder\Schema\RelationDefinition;
-use AiQueryBuilder\AiQueryBuilder\Schema\ResourceSchema;
+use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
+use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
+use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 use Workbench\App\Models\User;
 
 it('records the model, name and description', function () {

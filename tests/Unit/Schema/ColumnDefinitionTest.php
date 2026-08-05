@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use AiQueryBuilder\AiQueryBuilder\Exceptions\SchemaDefinitionException;
-use AiQueryBuilder\AiQueryBuilder\Schema\ColumnDefinition;
-use AiQueryBuilder\AiQueryBuilder\Schema\Enums\Aggregate;
-use AiQueryBuilder\AiQueryBuilder\Schema\Enums\DateBucket;
-use AiQueryBuilder\AiQueryBuilder\Schema\Enums\Operator;
+use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
+use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\Enums\Aggregate;
+use JTMcC\AiQueryBuilder\Schema\Enums\DateBucket;
+use JTMcC\AiQueryBuilder\Schema\Enums\Operator;
 use Workbench\App\Models\User;
 
 it('exposes the column name when no alias is set', function () {

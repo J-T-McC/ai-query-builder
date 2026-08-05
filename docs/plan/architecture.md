@@ -51,8 +51,8 @@ existing AI layer.
 ```php
 namespace App\AiQueries;
 
-use AiQueryBuilder\AiQueryBuilder\Schema\ResourceSchema;
-use AiQueryBuilder\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
+use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
+use JTMcC\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
 
 class InvoiceQuerySchema implements DefinesQuerySchema
 {
@@ -282,7 +282,7 @@ $result = QueryRunner::for($plan)
 The adapter class is only registered if `interface_exists(\Laravel\Ai\Contracts\Tool::class)`.
 
 ```php
-namespace AiQueryBuilder\AiQueryBuilder\Ai;
+namespace JTMcC\AiQueryBuilder\Ai;
 
 use Laravel\Ai\Contracts\Tool;
 

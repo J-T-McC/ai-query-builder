@@ -32,12 +32,12 @@
     },
     "autoload": {
         "psr-4": {
-            "AiQueryBuilder\\AiQueryBuilder\\": "src/"
+            "JTMcC\\AiQueryBuilder\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "AiQueryBuilder\\AiQueryBuilder\\Tests\\": "tests/",
+            "JTMcC\\AiQueryBuilder\\Tests\\": "tests/",
             "Workbench\\App\\": "workbench/app/",
             "Workbench\\Database\\Factories\\": "workbench/database/factories/",
             "Workbench\\Database\\Seeders\\": "workbench/database/seeders/"
@@ -87,10 +87,10 @@
     "extra": {
         "laravel": {
             "providers": [
-                "AiQueryBuilder\\AiQueryBuilder\\AiQueryBuilderServiceProvider"
+                "JTMcC\\AiQueryBuilder\\AiQueryBuilderServiceProvider"
             ],
             "aliases": {
-                "AiQueryBuilder": "AiQueryBuilder\\AiQueryBuilder\\Facades\\AiQueryBuilder"
+                "AiQueryBuilder": "JTMcC\\AiQueryBuilder\\Facades\\AiQueryBuilder"
             }
         }
     },

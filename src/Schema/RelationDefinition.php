@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder\Schema;
+namespace JTMcC\AiQueryBuilder\Schema;
 
-use AiQueryBuilder\AiQueryBuilder\Schema\Concerns\DefinesStructure;
+use JTMcC\AiQueryBuilder\Schema\Concerns\DefinesStructure;
 
 /**
  * A traversable Eloquent relation and the columns it exposes.

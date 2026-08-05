@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder\Schema;
+namespace JTMcC\AiQueryBuilder\Schema;
 
-use AiQueryBuilder\AiQueryBuilder\Exceptions\SchemaDefinitionException;
-use AiQueryBuilder\AiQueryBuilder\Exceptions\UnknownResourceException;
-use AiQueryBuilder\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
 use Illuminate\Contracts\Container\Container;
+use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
+use JTMcC\AiQueryBuilder\Exceptions\UnknownResourceException;
+use JTMcC\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
 
 /**
  * Resolves and indexes the resources exposed to AI agents.

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder\Schema\Enums;
+namespace JTMcC\AiQueryBuilder\Schema\Enums;
 
 /**
  * Granularities a date column may be truncated to when grouping.

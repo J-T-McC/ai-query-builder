@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder\Schema\Enums;
+namespace JTMcC\AiQueryBuilder\Schema\Enums;
 
 /**
  * The complete set of filter operators the package will ever compile.

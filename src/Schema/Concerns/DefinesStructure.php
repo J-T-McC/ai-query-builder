@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder\Schema\Concerns;
+namespace JTMcC\AiQueryBuilder\Schema\Concerns;
 
-use AiQueryBuilder\AiQueryBuilder\Exceptions\SchemaDefinitionException;
-use AiQueryBuilder\AiQueryBuilder\Schema\ColumnDefinition;
-use AiQueryBuilder\AiQueryBuilder\Schema\RelationDefinition;
-use AiQueryBuilder\AiQueryBuilder\Schema\ResourceSchema;
 use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
+use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
+use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
+use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 
 /**
  * Column and relation declaration shared by resources and their relations.

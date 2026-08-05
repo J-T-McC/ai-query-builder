@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace AiQueryBuilder\AiQueryBuilder\Schema\Contracts;
+namespace JTMcC\AiQueryBuilder\Schema\Contracts;
 
-use AiQueryBuilder\AiQueryBuilder\Schema\ResourceSchema;
+use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 
 /**
  * Implemented by application classes that expose a resource to AI agents.
