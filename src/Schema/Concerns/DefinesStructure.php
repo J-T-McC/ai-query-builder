@@ -137,17 +137,27 @@ trait DefinesStructure
      */
     public function columnPaths(?Authenticatable $user, string $prefix = ''): array
     {
-        $paths = [];
+        return array_keys($this->visibleColumnMap($user, $prefix));
+    }
+
+    /**
+     * Every visible column keyed by its full path, including those behind relations.
+     *
+     * @return array<string, ColumnDefinition>
+     */
+    public function visibleColumnMap(?Authenticatable $user, string $prefix = ''): array
+    {
+        $columns = [];
 
         foreach ($this->visibleColumns($user) as $name => $column) {
-            $paths[] = $prefix.$name;
+            $columns[$prefix.$name] = $column;
         }
 
         foreach ($this->relations as $name => $relation) {
-            $paths = [...$paths, ...$relation->columnPaths($user, $prefix.$name.'.')];
+            $columns = [...$columns, ...$relation->visibleColumnMap($user, $prefix.$name.'.')];
         }
 
-        return $paths;
+        return $columns;
     }
 
     /**

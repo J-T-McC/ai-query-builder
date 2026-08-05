@@ -340,44 +340,15 @@ plan + user + scope.
 
 ### Door 1: Laravel AI SDK tool (recommended)
 
-`laravel/ai` is at **v0.10.2** — pre-1.0. It goes in `suggest` and `require-dev`, never `require`.
-The adapter class is only registered if `interface_exists(\Laravel\Ai\Contracts\Tool::class)`.
+`laravel/ai` is at **v0.10.2** — pre-1.0. It is a `suggest` and a `require-dev`, never a
+`require`: the package works with no AI layer at all, and a 0.x dependency should not dictate
+this package's stability.
+
+`QueryDataTool` is shipped. The whole integration is registering it on an agent you already have:
 
 ```php
-namespace JTMcC\AiQueryBuilder\Ai;
+use JTMcC\AiQueryBuilder\Ai\QueryDataTool;
 
-use Laravel\Ai\Contracts\Tool;
-
-class QueryDataTool implements Tool
-{
-    public function __construct(private string $resource, private ?Authenticatable $user = null) {}
-
-    public function description(): string
-    {
-        // The data dictionary — generated from the schema, scoped to $this->user.
-        return SchemaContract::for($this->resource, $this->user)->toPrompt();
-    }
-
-    public function schema(JsonSchema $schema): array
-    {
-        // JSON Schema generated from the resource: enums for column names, operators,
-        // and functions, so the model is constrained at the decoding layer too.
-        return SchemaContract::for($this->resource, $this->user)->toJsonSchema($schema);
-    }
-
-    public function handle(Request $request): string
-    {
-        return app(QueryRunner::class)
-            ->as($this->user)
-            ->run($request->toArray())
-            ->toJson();   // on validation failure: structured errors, so the model retries
-    }
-}
-```
-
-The host app registers it on its own existing agent:
-
-```php
 class AnalystAgent implements Agent, HasTools
 {
     use Promptable;
@@ -389,12 +360,34 @@ class AnalystAgent implements Agent, HasTools
 }
 ```
 
-That is the whole integration. No new AI layer.
+- `description()` is the data dictionary for that user (§9's `toPrompt()`).
+- `schema()` constrains the model at the decoding layer.
+- `handle()` runs the plan and returns rows as JSON. A rejection is *returned* rather than
+  thrown, so the model can correct it — which makes retries the agent loop's decision. Cap them
+  with `#[MaxSteps(1)]` for strictly one-shot (§5.1).
+- `resource` defaults into the plan, so the model does not have to repeat it.
+
+**The tool schema nests filters to a bounded depth.** Laravel's `JsonSchema` builder has no
+`$ref`, so a recursive filter tree cannot be expressed the way `SchemaContract::toJsonSchema()`
+does it. `PlanToolSchema` inlines groups three levels deep instead, with the innermost accepting
+only conditions. That bounds what a *model can emit*; it is unrelated to the schema's
+`maxFilterDepth`, and the validator remains the authority either way.
 
 ### Door 2: structured output
 
-For a single-shot "prompt in, rows out" endpoint, ship a `QueryPlannerAgent implements Agent,
-HasStructuredOutput` whose `schema()` is the generated JSON Schema.
+For a single-shot "prompt in, rows out" endpoint, implement `Agent, HasStructuredOutput` in your
+app and reuse the same schema builder — there is nothing for the package to add:
+
+```php
+public function schema(JsonSchema $schema): array
+{
+    return (new PlanToolSchema(
+        SchemaContract::for(app(SchemaRegistry::class)->get('invoices'), auth()->user())
+    ))->build($schema);
+}
+```
+
+Then hand the structured response to `QueryRunner::run()`.
 
 ### Door 3: bring your own
 
@@ -450,7 +443,7 @@ and `ai-query:try {resource} "natural language"` for tuning.
 | 2 | ✅ **Done.** `QueryPlan` + `PlanValidator` with structured errors. |
 | 3 | ✅ **Done.** `PlanCompiler` + mandatory scopes + the filter-nesting guarantee. |
 | 4 | ✅ **Done.** `QueryRunner`, guardrails, events, audit. |
-| 5 | Laravel AI SDK adapters, behind `interface_exists`. |
+| 5 | ✅ **Done.** Contract layer + Laravel AI SDK tool adapter. |
 | 6 | Generator + describe commands. |
 | 7 | Publishable endpoint, README, Boost skill regeneration. |
 
