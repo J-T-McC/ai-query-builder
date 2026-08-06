@@ -176,9 +176,9 @@ from your declared relations.
 
 ### Filter values
 
-A filter value must be a literal of the kind the column holds. The type is read from the model's
-casts, or declared with `->typed()` when the casts do not say. An unrecognised cast means no type
-and no check, so inference never rejects a plan it merely failed to understand.
+A filter value must be of the kind the column holds. The type is read from the model's casts, or
+declared with `->typed()` when the casts do not say. An unrecognised cast means no type and no
+check, so inference never rejects a plan it merely failed to understand.
 
 This exists because the wrong kind of value does not fail anywhere. It validates, binds, runs, and
 the comparison quietly means something else:
@@ -189,21 +189,44 @@ the comparison quietly means something else:
 
 Nothing evaluates that string. MySQL casts it to a zero date and matches every row; SQLite
 compares it as text and matches none. The query succeeds either way and the agent narrates the
-result as the answer. It is now rejected with `value_type_mismatch` and a message saying what to
-send instead, which the agent can correct in one round trip.
+result as the answer. It is rejected with `value_type_mismatch`.
 
-**Relative dates are the integrator's job.** The package will not resolve `now` on an agent's
-behalf — a value nobody chose is a value nobody can audit. Give the agent the current time in
-**your own system prompt**, per request:
+### Date ranges
 
-```php
-$prompt = 'The current time is '.now()->toDateTimeString().'. '
-    .'Compute date ranges yourself and send absolute values.';
+An agent should not be doing calendar arithmetic, so it doesn't have to. A date column that
+permits `between` also accepts `within`, which names a range the package resolves:
+
+```json
+{ "column": "issued_at", "operator": "within", "value": "last_30_days" }
 ```
 
-Put it there rather than in the resource contract: the contract is byte-identical between
-requests, which is what lets a provider serve it from its prompt cache. A timestamp inside it
-would change on every call and throw that away.
+```
+today            yesterday        this_week        last_week
+this_month       last_month       this_quarter     last_quarter
+this_year        last_year        month_to_date    quarter_to_date
+year_to_date     last_<N>_<seconds|minutes|hours|days|weeks|months|years>
+```
+
+Named windows use calendar boundaries — `last_month` is the whole of the previous month, and
+stepping back from the 1st means `last_month` on the 31st of March is February, not March 3rd.
+`last_<N>_<unit>` rolls back from this instant. Bounds are inclusive, and a date column is bound
+as a bare date so the boundary day is not dropped. A window shorter than a day is refused on a
+column that stores no time, rather than quietly collapsing to "today".
+
+`within` needs no declaration: it compiles to the same bounded comparison `between` already
+permits, so it grants no reach you did not already grant.
+
+**The grammar is closed, and that is the point.** Feeding these strings to a general parser is
+worse, measurably: `strtotime` resolves `now-30d` — the string that caused this — to thirty
+*hours* in the future, reads `01/02/2026` as January whatever the writer meant, and turns
+`last month` into a point in time a month back rather than the month itself, while rejecting
+`last 30 days`, `this quarter` and `year to date` outright. Everything it wrongly rejects is
+named above; everything it wrongly accepts is refused, with `did_you_mean` pointing at the window
+that was meant.
+
+**The window stays in the plan.** It resolves on each validation, not into the plan, so a stored
+plan replayed next week means the week that has passed rather than the one that had passed when
+it was written. That is what makes a plan worth caching.
 
 ## Running a plan
 

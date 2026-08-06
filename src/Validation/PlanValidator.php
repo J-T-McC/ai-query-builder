@@ -15,8 +15,10 @@ use JTMcC\AiQueryBuilder\Plan\HavingClause;
 use JTMcC\AiQueryBuilder\Plan\QueryPlan;
 use JTMcC\AiQueryBuilder\Plan\SelectClause;
 use JTMcC\AiQueryBuilder\Plan\SortClause;
+use JTMcC\AiQueryBuilder\Plan\TimeWindow;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
 use JTMcC\AiQueryBuilder\Schema\Enums\Aggregate;
+use JTMcC\AiQueryBuilder\Schema\Enums\ColumnType;
 use JTMcC\AiQueryBuilder\Schema\Enums\DateBucket;
 use JTMcC\AiQueryBuilder\Schema\Enums\Operator;
 use JTMcC\AiQueryBuilder\Schema\Limits;
@@ -359,6 +361,10 @@ final class PlanValidator
         }
 
         $operator = Operator::tryFrom(is_string($condition['operator'] ?? null) ? $condition['operator'] : '');
+
+        if ($operator === Operator::Within) {
+            return $this->resolveWindow($condition['value'] ?? null, $schema, $definition, $columnPath, $path);
+        }
 
         if ($operator === null || ! $definition->allowsOperator($operator)) {
             $this->error(
@@ -893,6 +899,70 @@ final class PlanValidator
     }
 
     /**
+     * Turn a named date range into the bounds it stands for.
+     *
+     * The plan keeps the name; only the validated condition carries dates. That
+     * is what lets a stored plan be replayed next week and still mean the same
+     * question, and it puts the calendar arithmetic — month ends, quarters,
+     * leap years — in code that can be tested rather than in a model's head.
+     */
+    private function resolveWindow(
+        mixed $value,
+        ResourceSchema $schema,
+        ColumnDefinition $definition,
+        string $columnPath,
+        string $path,
+    ): ?FilterCondition {
+        if (! $schema->permitsWindow($columnPath, $definition)) {
+            $this->error(
+                "{$path}.operator",
+                ValidationCode::OperatorNotAllowed,
+                sprintf(
+                    'The operator [within] is not permitted on [%s]. It applies to a date column that permits between.',
+                    $columnPath,
+                ),
+            );
+
+            return null;
+        }
+
+        $window = is_string($value) ? TimeWindow::tryFrom($value) : null;
+
+        if ($window === null) {
+            $this->error(
+                "{$path}.value",
+                ValidationCode::UnknownTimeWindow,
+                sprintf(
+                    'The window [%s] is not one this package resolves. Named: %s. Or last_<N>_<days|weeks|months|years>.',
+                    $this->describe($value),
+                    implode(', ', TimeWindow::names()),
+                ),
+                is_string($value) ? TimeWindow::suggestFor($value) : null,
+            );
+
+            return null;
+        }
+
+        $type = $schema->typeOf($columnPath, $definition) ?? ColumnType::Datetime;
+
+        if (! $window->appliesTo($type)) {
+            $this->error(
+                "{$path}.value",
+                ValidationCode::UnknownTimeWindow,
+                sprintf(
+                    'The window [%s] is shorter than a day, and [%s] stores a date with no time.',
+                    $window->expression,
+                    $columnPath,
+                ),
+            );
+
+            return null;
+        }
+
+        return new FilterCondition($columnPath, $definition, Operator::Within, $window->resolve($type));
+    }
+
+    /**
      * Refuse a value that is not the kind of thing the column holds.
      *
      * This is the difference between a wrong answer and a corrected one. A
@@ -922,6 +992,8 @@ final class PlanValidator
             return true;
         }
 
+        $window = $schema->permitsWindow($columnPath, $column);
+
         foreach (is_array($value) ? $value : [$value] as $item) {
             if ($type->accepts($item)) {
                 continue;
@@ -935,8 +1007,12 @@ final class PlanValidator
                     $this->describe($item),
                     $type->value,
                     $columnPath,
-                    $type->hint(),
+                    // A relative expression arriving here means the agent
+                    // reached for a range with a point operator. Point it at
+                    // the operator that does what it was trying to do.
+                    $window ? 'Use operator [within] with a named range, or give an absolute literal.' : $type->hint(),
                 ),
+                $window && is_string($item) ? TimeWindow::suggestFor($item) : null,
             );
 
             return false;

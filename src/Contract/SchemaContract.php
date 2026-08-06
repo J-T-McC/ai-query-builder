@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace JTMcC\AiQueryBuilder\Contract;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use JTMcC\AiQueryBuilder\Plan\TimeWindow;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
-use JTMcC\AiQueryBuilder\Schema\Enums\ColumnType;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 
 /**
@@ -60,7 +60,7 @@ final readonly class SchemaContract
                 'selectable' => $column->isSelectable(),
                 'sortable' => $column->isSortable(),
                 'groupable' => $column->isGroupable(),
-                'filters' => array_column($column->operators(), 'value'),
+                'filters' => $column->isFilterable() ? $this->operatorsFor($path, $column) : [],
                 'aggregates' => array_column($column->aggregates(), 'value'),
                 'buckets' => array_column($column->dateBuckets(), 'value'),
             ], static fn (mixed $value): bool => $value !== null && $value !== [] && $value !== false);
@@ -108,10 +108,11 @@ final readonly class SchemaContract
             $lines[] = '- '.$path.$this->describeColumn($path, $column);
         }
 
-        if ($this->hasTemporalFilter()) {
+        if ($this->windows() !== []) {
             $lines[] = '';
-            $lines[] = 'Date filters take an absolute literal: 2026-07-07, or 2026-07-07 09:30:00. '
-                .'Work it out yourself — a relative expression such as "now-30d" is not evaluated.';
+            $lines[] = 'Date ranges: operator "within" with one of: '.implode(', ', TimeWindow::names())
+                .', or last_<N>_<seconds|minutes|hours|days|weeks|months|years>. Resolved here — do not '
+                .'compute dates yourself. Literals also work: 2026-07-07, or 2026-07-07 09:30:00.';
         }
 
         $lines[] = '';
@@ -126,22 +127,36 @@ final readonly class SchemaContract
     }
 
     /**
-     * Whether any visible column takes a date or date-time filter value.
+     * The visible columns that accept a named date range.
      *
-     * Gates the format note, so a resource with no temporal filter does not pay
-     * for a sentence about one on every step.
+     * Gates the sentence describing them, so a resource with no such column
+     * does not pay for it on every step.
+     *
+     * @return list<string>
      */
-    private function hasTemporalFilter(): bool
+    public function windows(): array
     {
-        foreach ($this->columns() as $path => $column) {
-            $type = $column->isFilterable() ? $this->schema->typeOf($path, $column) : null;
+        $paths = [];
 
-            if ($type === ColumnType::Date || $type === ColumnType::Datetime) {
-                return true;
+        foreach ($this->columns() as $path => $column) {
+            if ($this->schema->permitsWindow($path, $column)) {
+                $paths[] = $path;
             }
         }
 
-        return false;
+        return $paths;
+    }
+
+    /**
+     * The operators a column really accepts, including the one it derives.
+     *
+     * @return list<string>
+     */
+    private function operatorsFor(string $path, ColumnDefinition $column): array
+    {
+        $operators = array_column($column->operators(), 'value');
+
+        return $this->schema->permitsWindow($path, $column) ? [...$operators, 'within'] : $operators;
     }
 
     private function describeColumn(string $path, ColumnDefinition $column): string
@@ -175,7 +190,7 @@ final readonly class SchemaContract
         }
 
         if ($column->operators() !== []) {
-            $capabilities[] = 'filter('.implode(' ', array_column($column->operators(), 'value')).')';
+            $capabilities[] = 'filter('.implode(' ', $this->operatorsFor($path, $column)).')';
         }
 
         if ($column->aggregates() !== []) {

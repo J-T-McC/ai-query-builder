@@ -19,6 +19,14 @@ enum Operator: string
     case LessThan = '<';
     case LessThanOrEqual = '<=';
     case Between = 'between';
+
+    /**
+     * A named date range the package resolves, rather than one the agent
+     * computes. Derived from `between` on a date column rather than declared,
+     * because it grants no access that `between` did not already grant.
+     */
+    case Within = 'within';
+
     case In = 'in';
     case NotIn = 'not_in';
     case Like = 'like';

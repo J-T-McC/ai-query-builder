@@ -134,6 +134,10 @@ final readonly class PlanToolSchema
     {
         $operators = $this->unionOf($definitions, static fn (ColumnDefinition $c): array => array_column($c->operators(), 'value'));
 
+        if ($this->contract->windows() !== []) {
+            $operators[] = 'within';
+        }
+
         return $schema->object([
             'column' => $schema->string()->enum($columns)->required(),
             'operator' => $schema->string()

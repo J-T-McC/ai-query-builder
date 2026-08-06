@@ -95,20 +95,26 @@ describe('prompt rendering', function () {
         expect(contract()->toPrompt())->toContain("\n- invoice_id — select, sort\n");
     });
 
-    it('states the date literal rule once, and only where a date can be filtered', function () {
+    it('lists the named date ranges once, and only where one can be used', function () {
         $prompt = contract()->toPrompt();
 
-        expect(substr_count($prompt, 'a relative expression such as "now-30d" is not evaluated'))->toBe(1)
-            ->and($prompt)->toContain('2026-07-07 09:30:00');
+        expect(substr_count($prompt, 'Date ranges: operator "within"'))->toBe(1)
+            ->and($prompt)->toContain('last_month, this_quarter')
+            ->toContain('last_<N>_<seconds|minutes|hours|days|weeks|months|years>')
+            ->toContain('2026-07-07 09:30:00');
     });
 
-    it('omits the date rule from a resource with no date filter', function () {
+    it('advertises within on the column that derives it', function () {
+        expect(contract()->toPrompt())->toContain('filter(= > < >= <= between within)');
+    });
+
+    it('omits the date ranges from a resource with no date filter', function () {
         $schema = ResourceSchema::make()
             ->for(Invoice::class)
             ->name('invoices')
             ->column('status', fn (ColumnDefinition $c) => $c->filterable(['=']));
 
-        expect(SchemaContract::for($schema)->toPrompt())->not->toContain('now-30d');
+        expect(SchemaContract::for($schema)->toPrompt())->not->toContain('within');
     });
 
     it('states the row and depth limits', function () {
