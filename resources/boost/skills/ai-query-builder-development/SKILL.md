@@ -11,7 +11,7 @@ metadata:
 # Ai Query Builder
 
 Use this skill when a Laravel application needs an AI agent to query data safely, or when
-adopting or configuring the `j-t-mcc/ai-query-builder` package.
+adopting or configuring the `jtmcc/ai-query-builder` package.
 
 The package is not an AI layer. It validates an untrusted *query plan* against a schema the
 developer declares, compiles it to Eloquent with scopes the plan cannot express, and runs it
@@ -19,7 +19,7 @@ under limits. It sits underneath whatever AI layer the app already has.
 
 ## Primary Goal
 
-- apply the `j-t-mcc/ai-query-builder` package's public API in the smallest correct way
+- apply the `jtmcc/ai-query-builder` package's public API in the smallest correct way
 - expose the least data that answers the question, and never more
 
 ## Workflow
@@ -27,7 +27,7 @@ under limits. It sits underneath whatever AI layer the app already has.
 ### 1. Install and publish config
 
 ```bash
-composer require j-t-mcc/ai-query-builder
+composer require jtmcc/ai-query-builder
 php artisan vendor:publish --tag="ai-query-builder-config"
 ```
 

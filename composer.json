@@ -1,10 +1,10 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "j-t-mcc/ai-query-builder",
+    "name": "jtmcc/ai-query-builder",
     "description": "Allow AI to generate safe queries based on a defined schema",
     "keywords": [
         "laravel",
-        "j-t-mcc",
+        "jtmcc",
         "ai-query-builder"
     ],
     "homepage": "https://github.com/j-t-mcc/ai-query-builder",
