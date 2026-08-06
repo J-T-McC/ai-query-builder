@@ -3,7 +3,10 @@
 declare(strict_types=1);
 
 use JTMcC\AiQueryBuilder\Contract\SchemaContract;
+use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 use JTMcC\AiQueryBuilder\Tests\Fixtures\InvoiceSchema;
+use Workbench\App\Models\Invoice;
 use Workbench\App\Models\User;
 
 function contract(?object $user = null): SchemaContract
@@ -40,6 +43,7 @@ describe('data dictionary', function () {
         $columns = contract()->toArray()['columns'];
 
         expect($columns['total'])->toBe([
+            'type' => 'number',
             'unit' => 'currency:USD',
             'selectable' => true,
             'sortable' => true,
@@ -79,6 +83,32 @@ describe('prompt rendering', function () {
             ->toContain('unit: currency:USD')
             ->toContain('one of: widget, service')
             ->toContain('group by(day month year)');
+    });
+
+    it('states the type of a column whose filter values are constrained', function () {
+        expect(contract()->toPrompt())->toContain('- issued_at — date. select, filter');
+    });
+
+    it('says nothing about the type of a column that cannot be filtered', function () {
+        // invoice_id is an integer to the model, but nothing may filter on it,
+        // so a type here is a token cost on every step for nothing.
+        expect(contract()->toPrompt())->toContain("\n- invoice_id — select, sort\n");
+    });
+
+    it('states the date literal rule once, and only where a date can be filtered', function () {
+        $prompt = contract()->toPrompt();
+
+        expect(substr_count($prompt, 'a relative expression such as "now-30d" is not evaluated'))->toBe(1)
+            ->and($prompt)->toContain('2026-07-07 09:30:00');
+    });
+
+    it('omits the date rule from a resource with no date filter', function () {
+        $schema = ResourceSchema::make()
+            ->for(Invoice::class)
+            ->name('invoices')
+            ->column('status', fn (ColumnDefinition $c) => $c->filterable(['=']));
+
+        expect(SchemaContract::for($schema)->toPrompt())->not->toContain('now-30d');
     });
 
     it('states the row and depth limits', function () {

@@ -8,6 +8,7 @@ use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
 use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
 use JTMcC\AiQueryBuilder\Schema\Enums\Aggregate;
+use JTMcC\AiQueryBuilder\Schema\Enums\ColumnType;
 use JTMcC\AiQueryBuilder\Schema\Enums\DateBucket;
 use JTMcC\AiQueryBuilder\Schema\Enums\Operator;
 
@@ -40,6 +41,8 @@ final class ColumnDefinition
 
     /** @var list<string>|null */
     private ?array $enum = null;
+
+    private ?ColumnType $type = null;
 
     private ?string $unit = null;
 
@@ -136,6 +139,28 @@ final class ColumnDefinition
     }
 
     /**
+     * Declare the kind of value this column holds.
+     *
+     * Only needed when the model's casts do not already say so, or when they
+     * say something the query layer should not follow. A declared type always
+     * wins over an inferred one.
+     */
+    public function typed(ColumnType|string $type): self
+    {
+        if (is_string($type)) {
+            $type = ColumnType::tryFrom($type) ?? throw SchemaDefinitionException::unknownValue(
+                'column type',
+                $type,
+                array_column(ColumnType::cases(), 'value'),
+            );
+        }
+
+        $this->type = $type;
+
+        return $this;
+    }
+
+    /**
      * Attach unit metadata so a narrating agent formats the value correctly.
      */
     public function measuredIn(string $unit): self
@@ -217,6 +242,15 @@ final class ColumnDefinition
     public function enumValues(): ?array
     {
         return $this->enum;
+    }
+
+    /**
+     * The type declared here, if any. The resolved type — declaration first,
+     * then the model's casts — comes from ResourceSchema::typeOf().
+     */
+    public function type(): ?ColumnType
+    {
+        return $this->type;
     }
 
     public function unit(): ?string

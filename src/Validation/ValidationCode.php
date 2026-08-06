@@ -25,6 +25,7 @@ enum ValidationCode: string
     case FunctionNotAllowed = 'function_not_allowed';
     case BucketNotAllowed = 'bucket_not_allowed';
     case ValueNotInEnum = 'value_not_in_enum';
+    case ValueTypeMismatch = 'value_type_mismatch';
     case InvalidValueShape = 'invalid_value_shape';
     case DuplicateAlias = 'duplicate_alias';
     case UnknownAlias = 'unknown_alias';

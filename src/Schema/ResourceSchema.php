@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
 use JTMcC\AiQueryBuilder\Schema\Concerns\DefinesStructure;
+use JTMcC\AiQueryBuilder\Schema\Enums\ColumnType;
 
 /**
  * The allow-list for one queryable resource.
@@ -24,6 +25,8 @@ final class ResourceSchema
 
     /** @var class-string<Model>|null */
     private ?string $model = null;
+
+    private ?ColumnTypeResolver $types = null;
 
     private ?string $resourceName = null;
 
@@ -59,6 +62,9 @@ final class ResourceSchema
         }
 
         $this->model = $model;
+
+        // Anything already inferred was inferred from a different model.
+        $this->types = null;
 
         return $this;
     }
@@ -152,6 +158,24 @@ final class ResourceSchema
             maxFilterDepth: $this->maxFilterDepth,
             maxFilterNodes: $this->maxFilterNodes,
         );
+    }
+
+    /**
+     * The kind of value a column path holds, or null when nothing here knows.
+     *
+     * Declared on the column first, otherwise read from the model's casts. The
+     * validator uses it to refuse a filter value that would compile into a
+     * comparison meaning something other than what was asked.
+     */
+    public function typeOf(string $path, ?ColumnDefinition $column = null): ?ColumnType
+    {
+        $column ??= $this->findColumn($path);
+
+        if ($column === null) {
+            return null;
+        }
+
+        return ($this->types ??= new ColumnTypeResolver($this->model))->resolve($path, $column);
     }
 
     /** @return class-string<Model>|null */

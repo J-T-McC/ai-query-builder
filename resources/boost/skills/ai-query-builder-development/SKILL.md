@@ -54,6 +54,8 @@ A declared column is selectable and nothing else. Each capability is opt-in, on
 - `as(string)` — expose under a different name
 - `describe(string)`, `measuredIn(string)` — metadata the agent sees
 - `enum(array)` — closed set of values
+- `typed(string)` — `string` `integer` `number` `boolean` `date` `datetime`. Only needed where the
+  model's casts do not already say; filter values are checked against it either way
 - `filterable(array)` — permitted operators: `=` `!=` `>` `>=` `<` `<=` `between` `in` `not_in`
   `like` `is_null` `is_not_null`
 - `aggregatable(array)` — `sum` `avg` `min` `max` `count` `count_distinct`
@@ -169,3 +171,7 @@ Key behaviours to rely on:
   because the result would be silently inflated; aggregate on the joined side instead
 - do not rely on Eloquent global scopes for joined models; use `RelationDefinition::alwaysScope()`
 - do not feed query results back into a prompt as trusted input
+- do not expect a relative date such as `now-30d` to be resolved — it is rejected with
+  `value_type_mismatch`. Put the current time in your own per-request system prompt and have the
+  agent send absolute values; the resource contract stays identical between requests so a provider
+  can cache it

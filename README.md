@@ -78,6 +78,9 @@ final class InvoiceQuerySchema implements DefinesQuerySchema
 
             ->column('id', fn (ColumnDefinition $c) => $c->as('invoice_id')->sortable())
 
+            // The type comes from the model's casts, so a filter value that is
+            // not a real date is rejected. Declare it with ->typed('date') only
+            // where the casts do not already say.
             ->column('issued_at', fn (ColumnDefinition $c) => $c
                 ->describe('Date the invoice was issued')
                 ->filterable(['=', '>', '<', '>=', '<=', 'between'])
@@ -170,6 +173,37 @@ flag, not anywhere.
 
 Columns are relation paths. `lines.product.type` implies the joins; the compiler derives them
 from your declared relations.
+
+### Filter values
+
+A filter value must be a literal of the kind the column holds. The type is read from the model's
+casts, or declared with `->typed()` when the casts do not say. An unrecognised cast means no type
+and no check, so inference never rejects a plan it merely failed to understand.
+
+This exists because the wrong kind of value does not fail anywhere. It validates, binds, runs, and
+the comparison quietly means something else:
+
+```json
+{ "column": "issued_at", "operator": ">=", "value": "now-30d" }
+```
+
+Nothing evaluates that string. MySQL casts it to a zero date and matches every row; SQLite
+compares it as text and matches none. The query succeeds either way and the agent narrates the
+result as the answer. It is now rejected with `value_type_mismatch` and a message saying what to
+send instead, which the agent can correct in one round trip.
+
+**Relative dates are the integrator's job.** The package will not resolve `now` on an agent's
+behalf — a value nobody chose is a value nobody can audit. Give the agent the current time in
+**your own system prompt**, per request:
+
+```php
+$prompt = 'The current time is '.now()->toDateTimeString().'. '
+    .'Compute date ranges yourself and send absolute values.';
+```
+
+Put it there rather than in the resource contract: the contract is byte-identical between
+requests, which is what lets a provider serve it from its prompt cache. A timestamp inside it
+would change on every call and throw that away.
 
 ## Running a plan
 
@@ -309,6 +343,8 @@ invalid plan before deciding whether retries are worth the tokens.
   rejection cannot confirm it exists.
 - Unknown plan keys are rejected rather than dropped — a silently discarded clause answers a
   question nobody asked while looking like it answered the one they did.
+- A filter value that is not the kind of thing the column holds is rejected rather than bound.
+  See [Filter values](#filter-values).
 - Truncated results are flagged rather than passed off as complete.
 
 **It does not:**

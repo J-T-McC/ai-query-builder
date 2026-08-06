@@ -385,6 +385,10 @@ final class PlanValidator
             return null;
         }
 
+        if (! $this->valueMatchesType($schema, $definition, $operator, $value, $columnPath, "{$path}.value")) {
+            return null;
+        }
+
         return new FilterCondition($columnPath, $definition, $operator, $value);
     }
 
@@ -880,6 +884,59 @@ final class PlanValidator
                     implode(', ', $allowed),
                 ),
                 $this->suggest(is_string($item) ? $item : '', $allowed),
+            );
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Refuse a value that is not the kind of thing the column holds.
+     *
+     * This is the difference between a wrong answer and a corrected one. A
+     * value of the wrong kind does not fail anywhere downstream: it binds, the
+     * query runs, and the comparison quietly means something else — "now-30d"
+     * against a date column matches every row on MySQL and none on SQLite, and
+     * either way the agent narrates the result as though it were the answer.
+     *
+     * An enum column is skipped because its values are already checked against
+     * the declared list, which is a stricter statement than its type.
+     */
+    private function valueMatchesType(
+        ResourceSchema $schema,
+        ColumnDefinition $column,
+        Operator $operator,
+        mixed $value,
+        string $columnPath,
+        string $errorPath,
+    ): bool {
+        if ($column->enumValues() !== null || in_array($operator, self::VALUELESS_OPERATORS, strict: true)) {
+            return true;
+        }
+
+        $type = $schema->typeOf($columnPath, $column);
+
+        if ($type === null) {
+            return true;
+        }
+
+        foreach (is_array($value) ? $value : [$value] as $item) {
+            if ($type->accepts($item)) {
+                continue;
+            }
+
+            $this->error(
+                $errorPath,
+                ValidationCode::ValueTypeMismatch,
+                sprintf(
+                    'The value [%s] is not a %s, which is what [%s] holds. %s',
+                    $this->describe($item),
+                    $type->value,
+                    $columnPath,
+                    $type->hint(),
+                ),
             );
 
             return false;
