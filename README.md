@@ -146,6 +146,14 @@ php artisan ai-query:describe invoices --user=1
 php artisan ai-query:describe invoices --json
 ```
 
+Both halves of that contract — the dictionary and the plan schema — are resent on every step of
+an agent loop, so a resource that is expensive to describe is expensive on turns that never query
+it. `--cost` reports what it weighs, broken down by plan property and by filter depth:
+
+```bash
+php artisan ai-query:describe invoices --cost
+```
+
 ## Query plans
 
 An agent emits a plan. There is no `raw`, no `expression`, no `sql` key — not behind a config

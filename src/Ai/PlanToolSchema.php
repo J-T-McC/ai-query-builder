@@ -26,9 +26,14 @@ use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
  */
 final readonly class PlanToolSchema
 {
+    /**
+     * How deeply filter groups are inlined when no depth is given.
+     */
+    public const int DEFAULT_FILTER_DEPTH = 3;
+
     public function __construct(
         private SchemaContract $contract,
-        private int $filterDepth = 3,
+        private int $filterDepth = self::DEFAULT_FILTER_DEPTH,
     ) {}
 
     /**

@@ -56,6 +56,39 @@ it('prints the json schema with --json', function () {
         ->toHaveKey('$defs');
 });
 
+it('reports what the contract costs on the wire with --cost', function () {
+    [$status, $output] = describeSchema(['resource' => 'invoices', '--cost' => true]);
+
+    expect($status)->toBe(0)
+        ->and($output)->toContain('description')
+        ->toContain('input_schema')
+        ->toContain('filters')
+        ->toContain('depth 3')
+        ->toContain('current');
+});
+
+it('accounts for every byte of the schema it reports', function () {
+    [, $output] = describeSchema(['resource' => 'invoices', '--cost' => true]);
+
+    // The per-property rows plus the envelope must sum to the reported total,
+    // or the breakdown is quietly hiding bytes that are still being billed.
+    preg_match('/input_schema\s+\.+\s+([\d,]+)/', $output, $total);
+    preg_match_all('/\n\s+(?:\w+|envelope)\s+\.+\s+([\d,]+) \d+%/', $output, $parts);
+
+    $sum = array_sum(array_map(fn (string $n): int => (int) str_replace(',', '', $n), $parts[1]));
+
+    expect($sum)->toBe((int) str_replace(',', '', $total[1]));
+});
+
+it('costs a gated column only for the user who can see it', function () {
+    $user = User::factory()->create();
+
+    [, $anonymous] = describeSchema(['resource' => 'invoices', '--cost' => true]);
+    [, $known] = describeSchema(['resource' => 'invoices', '--user' => $user->id, '--cost' => true]);
+
+    expect($known)->not->toBe($anonymous);
+});
+
 it('omits a gated column when no user is given', function () {
     [, $output] = describeSchema(['resource' => 'invoices']);
 
