@@ -117,7 +117,7 @@ final readonly class SchemaContract
      */
     public function toPrompt(): string
     {
-        $limits = $this->schema->limits();
+        $limits = $this->limits();
 
         $lines = ['Resource: '.$this->schema->resourceName()];
 
@@ -127,10 +127,7 @@ final readonly class SchemaContract
 
         $lines[] = '';
         $lines[] = 'Columns — reference these names exactly. Anything not listed does not exist.';
-
-        foreach ($this->columns() as $path => $column) {
-            $lines[] = '- '.$path.$this->describeColumn($path, $column);
-        }
+        $lines = [...$lines, ...$this->columnBlock()];
 
         if ($this->windows() !== []) {
             $lines[] = '';
@@ -183,7 +180,81 @@ final readonly class SchemaContract
         return $this->schema->permitsWindow($path, $column) ? [...$operators, 'within'] : $operators;
     }
 
-    private function describeColumn(string $path, ColumnDefinition $column): string
+    /**
+     * The column list, with the most common capability set stated once if that
+     * comes out shorter.
+     *
+     * Which it does not always: a legend is a fixed cost amortised over column
+     * count, and a resource whose columns all differ pays it for nothing. So
+     * both renderings are measured and the shorter wins, rather than guessing a
+     * threshold. Both are deterministic, which matters — a provider only serves
+     * a cached prompt prefix that is byte-identical between requests.
+     *
+     * @return list<string>
+     */
+    private function columnBlock(): array
+    {
+        $plain = $this->columnLines(null);
+        $common = $this->commonCapabilities();
+
+        if ($common === null) {
+            return $plain;
+        }
+
+        $hoisted = [
+            'Unless a column lists its own capabilities, it supports: '.$common.'.',
+            ...$this->columnLines($common),
+        ];
+
+        return strlen(implode("\n", $hoisted)) < strlen(implode("\n", $plain)) ? $hoisted : $plain;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function columnLines(?string $hoisted): array
+    {
+        $lines = [];
+
+        foreach ($this->columns() as $path => $column) {
+            $lines[] = '- '.$path.$this->describeColumn($path, $column, $hoisted);
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The capability set shared by more visible columns than any other, or null
+     * when no set is shared at all.
+     */
+    private function commonCapabilities(): ?string
+    {
+        $counts = [];
+
+        foreach ($this->columns() as $path => $column) {
+            $capabilities = $this->capabilitiesOf($path, $column);
+
+            if ($capabilities !== '') {
+                $counts[$capabilities] = ($counts[$capabilities] ?? 0) + 1;
+            }
+        }
+
+        // First past the post, so declaration order breaks ties and the result
+        // does not depend on sort stability.
+        $best = null;
+        $bestCount = 1;
+
+        foreach ($counts as $capabilities => $count) {
+            if ($count > $bestCount) {
+                $best = (string) $capabilities;
+                $bestCount = $count;
+            }
+        }
+
+        return $best;
+    }
+
+    private function describeColumn(string $path, ColumnDefinition $column, ?string $hoisted): string
     {
         $parts = [];
 
@@ -209,6 +280,21 @@ final readonly class SchemaContract
             $parts[] = 'one of: '.implode(', ', $column->enumValues());
         }
 
+        $capabilities = $this->capabilitiesOf($path, $column);
+
+        // A column matching the hoisted set says nothing about capabilities;
+        // the legend already did.
+        if ($capabilities !== $hoisted) {
+            $parts[] = $capabilities;
+        }
+
+        $parts = array_filter($parts);
+
+        return $parts === [] ? '' : ' — '.implode('. ', $parts);
+    }
+
+    private function capabilitiesOf(string $path, ColumnDefinition $column): string
+    {
         $capabilities = [];
 
         if ($column->isSelectable()) {
@@ -233,8 +319,6 @@ final readonly class SchemaContract
             $capabilities[] = 'sort';
         }
 
-        $parts[] = implode(', ', $capabilities);
-
-        return ' — '.implode('. ', array_filter($parts));
+        return implode(', ', $capabilities);
     }
 }
