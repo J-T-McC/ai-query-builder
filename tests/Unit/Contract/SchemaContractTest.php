@@ -123,6 +123,34 @@ describe('prompt rendering', function () {
             ->toContain('at most 2 relations');
     });
 
+    it('repeats capabilities per column when a legend would cost more than it saves', function () {
+        // Eight columns, barely any two alike: the legend is a fixed cost with
+        // almost nothing to amortise it over.
+        expect(contract()->toPrompt())
+            ->not->toContain('Unless a column lists its own')
+            ->toContain('- status — one of: draft, sent, paid, void. select, filter(= in), group');
+    });
+
+    it('states a shared capability set once when that is shorter', function () {
+        $schema = ResourceSchema::make()->for(Invoice::class)->name('invoices');
+
+        foreach (range(1, 20) as $index) {
+            $schema->column('column_'.$index, fn (ColumnDefinition $c) => $c->filterable(['=', 'in'])->sortable());
+        }
+
+        $schema->column('total', fn (ColumnDefinition $c) => $c->aggregatable(['sum']));
+
+        $prompt = SchemaContract::for($schema)->toPrompt();
+
+        expect($prompt)->toContain('Unless a column lists its own capabilities, it supports: select, filter(= in), sort.')
+            // Stated in the legend and nowhere else.
+            ->and(substr_count($prompt, 'select, filter(= in), sort'))->toBe(1)
+            // A column matching it carries nothing but its name.
+            ->and($prompt)->toContain("\n- column_7\n")
+            // One that does not still says so.
+            ->and($prompt)->toContain('- total — select, aggregate(sum)');
+    });
+
     it('does not double the full stop when a description ends in one', function () {
         $schema = ResourceSchema::make()
             ->for(Invoice::class)
