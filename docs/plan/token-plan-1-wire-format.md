@@ -60,7 +60,9 @@ model should not learn that another resource exists.
 Everything below is a trade. None of it should be argued from intuition.
 
 Add `--cost` to the existing `ai-query:describe` command rather than a new command — same input,
-same per-user contract resolution, different rendering:
+same per-user contract resolution, different rendering. The sample below is illustrative and was
+taken at `9788a7c`, before filter value types and named date ranges; run the command for what the
+contract costs today:
 
 ```
 $ php artisan ai-query:describe invoices --user=1 --cost
