@@ -16,7 +16,13 @@ away safe, and proposes changes in order of leverage.
 
 Measured against the workbench `invoices` fixture — 8 visible columns, 6 filterable, one
 relation two levels deep — serialized exactly as `laravel/ai` 0.10.2 sends it to Anthropic
-(`Gateway\Anthropic\Concerns\MapsTools::mapTool`):
+(`Gateway\Anthropic\Concerns\MapsTools::mapTool`).
+
+> Every figure below is the baseline as it stood at `9788a7c`, before filter value types and
+> named date ranges landed. Those added to the contract deliberately — the description is 1,125
+> chars now, not 733 — so treat these as the measurement that motivated the plan rather than a
+> reading of today's code. `php artisan ai-query:describe <resource> --cost` prints current
+> numbers.
 
 | Part | chars |
 |---|---:|
