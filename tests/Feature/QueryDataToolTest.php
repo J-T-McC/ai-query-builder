@@ -6,8 +6,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use JTMcC\AiQueryBuilder\Ai\QueryDataTool;
 use JTMcC\AiQueryBuilder\Tests\Fixtures\InvoiceQuerySchema;
+use JTMcC\AiQueryBuilder\Tests\Fixtures\ProductQuerySchema;
 use Laravel\Ai\Tools\Request;
 use Workbench\App\Models\Invoice;
+use Workbench\App\Models\Product;
 use Workbench\App\Models\User;
 
 uses(RefreshDatabase::class);
@@ -114,6 +116,36 @@ describe('handle', function () {
         expect($result['error'])->toBe('invalid_query_plan')
             ->and($result['errors'][0]['path'])->toBe('select.0.column')
             ->and($result['errors'][0]['did_you_mean'])->toBe('total');
+    });
+
+    it('runs against its own resource when the model names another', function () {
+        config()->set('ai-query-builder.resources', [InvoiceQuerySchema::class, ProductQuerySchema::class]);
+
+        Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 42, 'status' => 'paid',
+        ]);
+        Product::create(['name' => 'Widget', 'type' => 'widget']);
+
+        $result = json_decode(tool()->handle(new Request([
+            'resource' => 'products',
+            'select' => [['column' => 'invoice_id']],
+        ])), true);
+
+        expect($result['row_count'])->toBe(1);
+    });
+
+    it('does not reach another resource by naming it', function () {
+        config()->set('ai-query-builder.resources', [InvoiceQuerySchema::class, ProductQuerySchema::class]);
+
+        Product::create(['name' => 'Widget', 'type' => 'widget']);
+
+        $result = json_decode(tool()->handle(new Request([
+            'resource' => 'products',
+            'select' => [['column' => 'product_name']],
+        ])), true);
+
+        expect($result['error'])->toBe('invalid_query_plan')
+            ->and($result['errors'][0]['code'])->toBe('unknown_column');
     });
 
     it('applies mandatory scopes the model cannot see or remove', function () {

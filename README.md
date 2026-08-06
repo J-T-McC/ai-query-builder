@@ -362,6 +362,9 @@ invalid plan before deciding whether retries are worth the tokens.
   `or` cannot escape a tenant scope.
 - Values are always bound as parameters. Identifiers are built from your schema, never from plan
   strings.
+- A tool queries the resource it was constructed for. A plan naming a different registered
+  resource cannot redirect it, so which resources an agent may touch stays your decision about
+  which tools to register.
 - A column hidden from a user is reported as *unknown*, and never appears in a suggestion, so a
   rejection cannot confirm it exists.
 - Unknown plan keys are rejected rather than dropped — a silently discarded clause answers a
