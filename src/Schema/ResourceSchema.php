@@ -72,9 +72,18 @@ final class ResourceSchema
 
     /**
      * The name an agent uses to refer to this resource.
+     *
+     * It also becomes the tool name when the resource is exposed to an AI SDK,
+     * and providers constrain those. Rejecting a bad name here fails in the
+     * developer's test suite rather than as a 400 from a provider in
+     * production.
      */
     public function name(string $name): self
     {
+        if (preg_match('/^[a-zA-Z0-9_-]{1,128}$/', $name) !== 1) {
+            throw SchemaDefinitionException::invalidResourceName($name);
+        }
+
         $this->resourceName = $name;
 
         return $this;

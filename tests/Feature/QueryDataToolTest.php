@@ -8,6 +8,7 @@ use JTMcC\AiQueryBuilder\Ai\QueryDataTool;
 use JTMcC\AiQueryBuilder\Tests\Fixtures\InvoiceQuerySchema;
 use JTMcC\AiQueryBuilder\Tests\Fixtures\ProductQuerySchema;
 use Laravel\Ai\Tools\Request;
+use Laravel\Ai\Tools\ToolNameResolver;
 use Workbench\App\Models\Invoice;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\User;
@@ -34,6 +35,15 @@ function toolSchema(?object $user = null): array
     );
 }
 
+describe('name', function () {
+    it('names itself for its resource so two tools can share an agent', function () {
+        config()->set('ai-query-builder.resources', [InvoiceQuerySchema::class, ProductQuerySchema::class]);
+
+        expect(ToolNameResolver::resolve(tool()))->toBe('query_invoices')
+            ->and(ToolNameResolver::resolve(new QueryDataTool('products')))->toBe('query_products');
+    });
+});
+
 describe('description', function () {
     it('describes the resource as the data dictionary', function () {
         expect(tool()->description())
@@ -48,8 +58,39 @@ describe('description', function () {
 });
 
 describe('schema', function () {
-    it('pins the resource', function () {
-        expect(toolSchema()['resource']['enum'])->toBe(['invoices']);
+    it('does not ask the model for the resource it already knows', function () {
+        expect(toolSchema())->not->toHaveKey('resource');
+    });
+
+    it('inlines filters only as deeply as it is told to', function () {
+        $shallow = array_map(
+            fn ($type) => $type->toArray(),
+            (new QueryDataTool('invoices', filterDepth: 1))->schema(new JsonSchemaTypeFactory),
+        );
+
+        expect($shallow['filters']['properties']['conditions']['items'])->not->toHaveKey('anyOf')
+            ->and(toolSchema()['filters']['properties']['conditions']['items'])->toHaveKey('anyOf');
+    });
+
+    it('still accepts a plan nested deeper than the schema it emitted', function () {
+        Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 42, 'status' => 'paid',
+        ]);
+
+        // The emitted depth bounds what the model is shown. maxFilterDepth is
+        // what a plan is allowed to contain, and the validator owns that.
+        $result = json_decode((new QueryDataTool('invoices', filterDepth: 1))->handle(new Request([
+            'select' => [['column' => 'invoice_id']],
+            'filters' => [
+                'operator' => 'and',
+                'conditions' => [[
+                    'operator' => 'or',
+                    'conditions' => [['column' => 'status', 'operator' => '=', 'value' => 'paid']],
+                ]],
+            ],
+        ])), true);
+
+        expect($result['row_count'])->toBe(1);
     });
 
     it('restricts select columns to the visible declared set', function () {
@@ -96,7 +137,7 @@ describe('handle', function () {
             ->and($result['columns']['total'])->toBe(['unit' => 'currency:USD']);
     });
 
-    it('defaults the resource so the model need not repeat it', function () {
+    it('sets the resource the model was never asked for', function () {
         Invoice::create([
             'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 42, 'status' => 'paid',
         ]);
