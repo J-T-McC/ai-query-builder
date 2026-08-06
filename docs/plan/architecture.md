@@ -1,7 +1,7 @@
 # AI Query Builder — Architecture Plan
 
 **Status:** implemented through phase 7
-**Package:** `j-t-mcc/ai-query-builder`
+**Package:** `jtmcc/ai-query-builder`
 
 ## 1. The core idea
 
