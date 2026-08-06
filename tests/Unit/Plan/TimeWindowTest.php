@@ -118,6 +118,15 @@ describe('reading intent', function () {
         ['3 months ago', 'last_3_months'],
     ]);
 
+    it('reads a bare m as months, and spelled-out minutes as minutes', function () {
+        // Decided, not incidental: "m" is ambiguous between months and minutes,
+        // and a suggestion is a starting point the agent can override rather
+        // than a decision made for it.
+        expect(TimeWindow::suggestFor('now-3m'))->toBe('last_3_months')
+            ->and(TimeWindow::suggestFor('now-30min'))->toBe('last_30_minutes')
+            ->and(TimeWindow::suggestFor('now-30mo'))->toBe('last_30_months');
+    });
+
     it('suggests nothing when there is nothing to read', function (string $value) {
         expect(TimeWindow::suggestFor($value))->toBeNull();
     })->with(['now', '2026-07-07', 'sometime last week']);
