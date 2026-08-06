@@ -58,7 +58,7 @@ final class QueryDataTool implements Tool
     }
 
     /**
-     * Run the plan the model produced.
+     * Run the plan the model produced, against this tool's own resource.
      *
      * A rejection is returned to the model rather than thrown, so it can correct
      * the plan. That makes retries the agent loop's decision: cap them with
@@ -67,7 +67,12 @@ final class QueryDataTool implements Tool
     public function handle(Request $request): string
     {
         $plan = $request->toArray();
-        $plan['resource'] ??= $this->resource;
+
+        // Set, never default. The schema pins the resource to one value, but a
+        // schema constrains decoding rather than enforcing anything. A model
+        // naming another registered resource would otherwise redirect the tool
+        // away from the one it was built for.
+        $plan['resource'] = $this->resource;
 
         try {
             return $this->runner()->as($this->user)->run($plan)->toJson();
