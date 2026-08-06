@@ -40,6 +40,7 @@ final readonly class PlanToolSchema
     public function __construct(
         private SchemaContract $contract,
         private int $filterDepth = self::DEFAULT_FILTER_DEPTH,
+        private PlanSchemaDetail $detail = PlanSchemaDetail::Enumerated,
     ) {}
 
     /**
@@ -103,16 +104,18 @@ final readonly class PlanToolSchema
     private function select(JsonSchema $schema, array $columns, array $definitions): Type
     {
         $properties = [
-            'column' => $schema->string()->enum($columns)->required(),
+            'column' => $this->columnRef($schema, $columns, 'A selectable column path from the resource description.')->required(),
             'as' => $schema->string()->description('Result key. Defaults to the column path.'),
         ];
 
         $functions = $this->unionOf($definitions, static fn (ColumnDefinition $c): array => array_column($c->aggregates(), 'value'));
 
         if ($functions !== []) {
-            $properties['function'] = $schema->string()
-                ->enum($functions)
-                ->description('Aggregate to apply. Omit to return the raw value. Only permitted on some columns.');
+            $properties['function'] = $this->optionRef(
+                $schema,
+                $functions,
+                'Aggregate to apply. Omit to return the raw value. Only permitted on some columns.',
+            );
         }
 
         return $schema->object($properties)->withoutAdditionalProperties();
@@ -149,11 +152,8 @@ final readonly class PlanToolSchema
         }
 
         return $schema->object([
-            'column' => $schema->string()->enum($columns)->required(),
-            'operator' => $schema->string()
-                ->enum($operators)
-                ->description('Only some operators are permitted on each column.')
-                ->required(),
+            'column' => $this->columnRef($schema, $columns, 'A filterable column path from the resource description.')->required(),
+            'operator' => $this->optionRef($schema, $operators, 'Only some operators are permitted on each column.')->required(),
             'value' => $this->value($schema),
         ])->withoutAdditionalProperties();
     }
@@ -164,14 +164,14 @@ final readonly class PlanToolSchema
      */
     private function groupBy(JsonSchema $schema, array $columns, array $definitions): Type
     {
-        $properties = ['column' => $schema->string()->enum($columns)->required()];
+        $properties = [
+            'column' => $this->columnRef($schema, $columns, 'A groupable column path from the resource description.')->required(),
+        ];
 
         $buckets = $this->unionOf($definitions, static fn (ColumnDefinition $c): array => array_column($c->dateBuckets(), 'value'));
 
         if ($buckets !== []) {
-            $properties['bucket'] = $schema->string()
-                ->enum($buckets)
-                ->description('Truncate a date column to this granularity.');
+            $properties['bucket'] = $this->optionRef($schema, $buckets, 'Truncate a date column to this granularity.');
         }
 
         return $schema->object($properties)->withoutAdditionalProperties();
@@ -208,6 +208,34 @@ final readonly class PlanToolSchema
             $schema->boolean(),
             $schema->array(),
         ])->description('A scalar, or a list for in, not_in and between. Omitted for null checks.');
+    }
+
+    /**
+     * A column path: enumerated, or free-form with a pointer to the dictionary.
+     *
+     * The enum is the larger half of this schema and it is repeated at every
+     * inlined filter level, so it is the first thing worth giving up when a
+     * contract grows. Nothing about validation changes either way.
+     *
+     * @param  list<string>  $paths
+     */
+    private function columnRef(JsonSchema $schema, array $paths, string $hint): Type
+    {
+        return $this->detail->enumerates()
+            ? $schema->string()->enum($paths)
+            : $schema->string()->description($hint);
+    }
+
+    /**
+     * A fixed option: enumerated, with a description that stands either way.
+     *
+     * @param  list<string>  $options
+     */
+    private function optionRef(JsonSchema $schema, array $options, string $description): Type
+    {
+        $type = $schema->string()->description($description);
+
+        return $this->detail->enumerates() ? $type->enum($options) : $type;
     }
 
     /**

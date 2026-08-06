@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
+use JTMcC\AiQueryBuilder\Ai\PlanSchemaDetail;
 use JTMcC\AiQueryBuilder\Ai\QueryDataTool;
 use JTMcC\AiQueryBuilder\Tests\Fixtures\InvoiceQuerySchema;
 use JTMcC\AiQueryBuilder\Tests\Fixtures\ProductQuerySchema;
@@ -120,6 +121,32 @@ describe('schema', function () {
     it('forbids unknown keys in a select entry', function () {
         expect(toolSchema()['select']['items']['additionalProperties'])->toBeFalse();
     });
+});
+
+describe('hidden columns', function () {
+    /**
+     * The guarantee the generic schema leans on: with no enum steering the
+     * model, a rejection is the only signal it gets back, and a rejection must
+     * not become a way to probe for columns the user cannot see.
+     */
+    it('reports a hidden column as unknown at any detail level', function (PlanSchemaDetail $detail) {
+        $result = json_decode((new QueryDataTool('invoices', detail: $detail))->handle(new Request([
+            'select' => [['column' => 'customer_notes']],
+        ])), true);
+
+        expect($result['errors'][0]['code'])->toBe('unknown_column')
+            ->and($result['errors'][0]['message'])->toBe('Unknown column [customer_notes].')
+            ->and($result['errors'][0])->not->toHaveKey('did_you_mean');
+    })->with([PlanSchemaDetail::Enumerated, PlanSchemaDetail::Generic]);
+
+    it('never suggests a hidden column to correct a near miss', function (PlanSchemaDetail $detail) {
+        $result = json_decode((new QueryDataTool('invoices', detail: $detail))->handle(new Request([
+            'select' => [['column' => 'customer_note']],
+        ])), true);
+
+        expect($result['errors'][0]['code'])->toBe('unknown_column')
+            ->and($result['errors'][0])->not->toHaveKey('did_you_mean');
+    })->with([PlanSchemaDetail::Enumerated, PlanSchemaDetail::Generic]);
 });
 
 describe('handle', function () {

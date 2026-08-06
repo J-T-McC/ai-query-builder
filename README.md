@@ -292,6 +292,39 @@ one attempt.
 
 `laravel/ai` is a suggested dependency. The package works without it.
 
+#### Several resources
+
+A tool's description is its resource's whole data dictionary, and its schema enumerates every
+column. Both are resent on every step of the agent loop, so registering six resources means six
+dictionaries on every step — including the turn where the user says hello.
+
+Two tools replace that with a short list plus one round-trip:
+
+```php
+use JTMcC\AiQueryBuilder\Facades\AiQueryBuilder;
+
+public function tools(): iterable
+{
+    return AiQueryBuilder::tools(['invoices', 'customers'], auth()->user());
+}
+```
+
+`describe_query_resource` carries only the resource names and returns one dictionary when asked.
+`query_data` carries a plan schema that describes columns instead of enumerating them, so it does
+not grow as you add resources or columns. Build them from one array — that array is the boundary,
+the way registering one tool per resource used to be.
+
+The trade is real: without enums, nothing constrains column names at the decoding layer, so
+expect more rejections and more corrections. It is an accuracy trade, not a safety one — the
+validator is unchanged, and a column hidden from a user is still reported as *unknown*. Take the
+schema alone on a single-resource tool if you want it without the round-trip:
+
+```php
+new QueryDataTool('invoices', auth()->user(), detail: PlanSchemaDetail::Generic)
+```
+
+Measure both with `ai-query:describe invoices --cost` before choosing.
+
 ### Anything else
 
 ```php
