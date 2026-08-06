@@ -229,16 +229,26 @@ written the obvious way produces:
 
 Cosmetic, trivially fixed by trimming before the join, and every consumer will hit it.
 
-## 4. Prompt caching is upstream, and it dominates everything here
+## 4. Prompt caching dominates everything here
 
 `laravel/ai` never sets `cache_control` — `grep -r cache_control vendor/laravel/ai/src` returns
 nothing. The identical tool prefix is therefore re-billed at full input price on every step of
 every loop. Cache reads are roughly a tenth of input price, so caching a 12,700-token prefix
 saves more than every reduction proposed above combined.
 
-That is not this package's bug and cannot be fixed from inside it. Two things are worth doing:
+> **Corrected 2026-08-06.** This section originally called that an upstream bug and out of reach.
+> The grep was right, the conclusion was not: the SDK does not set `cache_control` for you, but
+> `Gateway/Anthropic/Concerns/BuildsTextRequests` ends in `array_merge($body, $providerOptions)`,
+> so an agent implementing `HasProviderOptions` can set it. Measured end to end on a 6-resource
+> app, one question: 30,062 billed-equivalent tokens uncached, ~3,210 warm — **89% off**. Only
+> top-level auto-placement is reachable this way; a breakpoint on the last tool definition, which
+> would let the stable tool block cache independently of the growing conversation, does need an
+> upstream change.
 
-1. **File it upstream on `laravel/ai`**, with the numbers from §1.
+Two things are worth doing:
+
+1. **Document the `providerOptions` binding and the prefix-stability trap**, since the failure
+   mode is a silent bill rather than an error.
 2. **Make the payload cache-friendly in the meantime** — a cached prefix only hits if it is
    byte-identical between requests. Anything non-deterministic in `toPrompt()` or the schema
    (map iteration order, an interpolated timestamp, a per-request user label) would silently

@@ -325,6 +325,61 @@ new QueryDataTool('invoices', auth()->user(), detail: PlanSchemaDetail::Generic)
 
 Measure both with `ai-query:describe invoices --cost` before choosing.
 
+One caveat specific to `Generic`. Enums steer filter *values* as a side effect, and dropping them
+takes that away, so a filterable column whose type is neither declared nor implied by the model's
+casts has nothing checking what goes into it. `->typed()` on those columns is what makes `Generic`
+as safe as `Enumerated` rather than only cheaper. See [Filter values](#filter-values).
+
+#### Prompt caching
+
+**Do this before shrinking anything.** The tool payload is close to the ideal cache target — it is
+large, it renders at the front of the prefix, and it is byte-identical between requests. A warm
+cache bills the whole prefix at roughly a tenth, which is a bigger lever than every wire-format
+saving in this package combined.
+
+`laravel/ai` never sets `cache_control` itself, but it merges provider options into the request
+body, so an agent can ask for it:
+
+```php
+use Laravel\Ai\Contracts\HasProviderOptions;
+use Laravel\Ai\Enums\Lab;
+
+class AnalystAgent implements Agent, HasProviderOptions, HasTools
+{
+    public function providerOptions(Lab|string $provider): array
+    {
+        return match ($provider) {
+            Lab::Anthropic => ['cache_control' => ['type' => 'ephemeral']],
+            default => [],
+        };
+    }
+}
+```
+
+**The trap is that caching is a prefix match.** One byte different anywhere before the breakpoint
+re-bills everything after it at full price, and the symptom is not an error — it is a larger
+invoice, with a cache being written on every request and read on none. So a volatile value
+anywhere in your prefix, most commonly a timestamp in your agent's instructions, costs you the
+entire benefit:
+
+```php
+str_replace('{NOW}', now()->toDateTimeString(), $prompt)   // invalidates every request
+str_replace('{TODAY}', now()->toDateString(), $prompt)     // stable for a day
+```
+
+Better still, do not put the time in the prefix at all. [Date ranges](#date-ranges) exist partly
+for this: an agent that says `within: last_30_days` never needs to be told what today is.
+
+**What this package guarantees for you:** `toPrompt()` and the plan schema render identically for
+the same contract and the same user, every build. That is what makes the payload cacheable at all,
+so it is held by tests rather than left to luck — see the `byte stability` block in
+`tests/Unit/Contract/SchemaContractTest.php`. `SchemaContract::fingerprint()` is the same promise
+in a form you can assert on in your own suite.
+
+Cache first, then shrink. With a warm cache the prefix bills at about a tenth, so trimming it is
+worth roughly a tenth of what it was worth uncached — but cold is every first request and every
+change to the prefix, and `Generic` and `filterDepth` still cut that.
+
 ### Anything else
 
 ```php

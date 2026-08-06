@@ -8,10 +8,18 @@ namespace JTMcC\AiQueryBuilder\Ai;
  * How much of the contract the emitted plan schema restates.
  *
  * The enums a schema carries are an accuracy optimisation, not a security
- * control. PlanValidator re-derives every permitted column, operator, aggregate
- * and bucket from the same contract and fails closed, so dropping an enum costs
- * at most one correction round-trip — never safety, and never the guarantee
- * that a column hidden from a user is reported as unknown.
+ * control. PlanValidator re-derives every permitted column, operator, aggregate,
+ * bucket and enum value from the same contract and fails closed, so dropping an
+ * enum costs at most one correction round-trip — never safety, and never the
+ * guarantee that a column hidden from a user is reported as unknown.
+ *
+ * That holds for everything the validator re-derives, which is everything the
+ * schema enumerates *except* the shape of a filter value. A value is checked
+ * against the column's type, and a column has a type when one is declared or
+ * the model's casts imply one. On a column with neither, nothing checks the
+ * value — under Enumerated the surrounding enums still steer the model toward a
+ * sensible one, and Generic takes that away. So `->typed()` on a filterable
+ * column is what makes Generic as safe as Enumerated, not merely cheaper.
  *
  * What it buys is growth: an enumerated schema is O(resources × columns ×
  * filterDepth), a generic one is constant. Measure both for a real schema with

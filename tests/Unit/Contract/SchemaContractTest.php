@@ -163,6 +163,44 @@ describe('prompt rendering', function () {
     });
 });
 
+describe('byte stability', function () {
+    // A provider serves a cached prompt prefix only when it matches byte for
+    // byte. The tool payload renders at the very front of that prefix, so if
+    // two builds of the same contract ever differ — set iteration, hash order,
+    // a timestamp — every consumer silently pays full price on every request
+    // and nothing fails. These are the tests that would fail instead.
+
+    it('renders the same prompt from two separate builds', function () {
+        expect(SchemaContract::for(InvoiceSchema::make())->toPrompt())
+            ->toBe(SchemaContract::for(InvoiceSchema::make())->toPrompt());
+    });
+
+    it('renders the same prompt for the same user twice', function () {
+        expect(contract(new User)->toPrompt())->toBe(contract(new User)->toPrompt());
+    });
+
+    it('renders the same json schema from two separate builds', function () {
+        expect(json_encode(SchemaContract::for(InvoiceSchema::make())->toJsonSchema()))
+            ->toBe(json_encode(SchemaContract::for(InvoiceSchema::make())->toJsonSchema()));
+    });
+
+    it('picks the same column block every time when a legend is in play', function () {
+        // columnBlock() measures two renderings and emits the shorter. A tie
+        // broken inconsistently would flip the payload between requests.
+        $build = function (): string {
+            $schema = ResourceSchema::make()->for(Invoice::class)->name('invoices');
+
+            foreach (range(1, 20) as $index) {
+                $schema->column('column_'.$index, fn (ColumnDefinition $c) => $c->filterable(['=', 'in'])->sortable());
+            }
+
+            return SchemaContract::for($schema)->toPrompt();
+        };
+
+        expect($build())->toBe($build());
+    });
+});
+
 describe('fingerprint', function () {
     it('is stable across builds, so the payload is cacheable', function () {
         expect(contract()->fingerprint())->toBe(contract()->fingerprint());

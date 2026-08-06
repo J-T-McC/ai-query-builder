@@ -92,3 +92,13 @@ describe('generic detail', function () {
         expect($gap(60))->toBeGreaterThan($gap(3) * 10);
     });
 });
+
+describe('byte stability', function () {
+    it('emits the same bytes from two separate builds', function (PlanSchemaDetail $detail) {
+        // The tool payload is the front of the cached prefix, and a provider
+        // serves that cache only on an exact match. A schema that varied
+        // between builds would cost every consumer full price on every
+        // request, with nothing failing to say so.
+        expect(json_encode(planSchema(detail: $detail)))->toBe(json_encode(planSchema(detail: $detail)));
+    })->with([PlanSchemaDetail::Enumerated, PlanSchemaDetail::Generic]);
+});

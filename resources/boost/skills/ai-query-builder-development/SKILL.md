@@ -172,6 +172,13 @@ Key behaviours to rely on:
   because the result would be silently inflated; aggregate on the joined side instead
 - do not rely on Eloquent global scopes for joined models; use `RelationDefinition::alwaysScope()`
 - do not feed query results back into a prompt as trusted input
+- do not optimise the tool payload before enabling prompt caching. The payload is byte-identical
+  between requests and sits at the front of the prefix, so a warm cache bills it at roughly a
+  tenth. On `laravel/ai`, implement `HasProviderOptions` on the agent and return
+  `['cache_control' => ['type' => 'ephemeral']]` for `Lab::Anthropic`
+- do not interpolate a timestamp into the agent's instructions. Caching is a prefix match, so a
+  value that changes every request writes a cache entry every time and reads none — a larger bill
+  with no error to show for it
 - do not have the agent compute dates. A date column that permits `between` also accepts the
   `within` operator with a named range (`last_30_days`, `last_month`, `year_to_date`,
   `last_<N>_<seconds|minutes|hours|days|weeks|months|years>`), resolved by the package. Free-text
