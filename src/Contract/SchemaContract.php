@@ -6,6 +6,7 @@ namespace JTMcC\AiQueryBuilder\Contract;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\Enums\ColumnType;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 
 /**
@@ -53,6 +54,7 @@ final readonly class SchemaContract
         foreach ($this->columns() as $path => $column) {
             $columns[$path] = array_filter([
                 'description' => $column->description(),
+                'type' => $this->schema->typeOf($path, $column)?->value,
                 'unit' => $column->unit(),
                 'values' => $column->enumValues(),
                 'selectable' => $column->isSelectable(),
@@ -103,7 +105,13 @@ final readonly class SchemaContract
         $lines[] = 'Columns — reference these names exactly. Anything not listed does not exist.';
 
         foreach ($this->columns() as $path => $column) {
-            $lines[] = '- '.$path.$this->describeColumn($column);
+            $lines[] = '- '.$path.$this->describeColumn($path, $column);
+        }
+
+        if ($this->hasTemporalFilter()) {
+            $lines[] = '';
+            $lines[] = 'Date filters take an absolute literal: 2026-07-07, or 2026-07-07 09:30:00. '
+                .'Work it out yourself — a relative expression such as "now-30d" is not evaluated.';
         }
 
         $lines[] = '';
@@ -117,12 +125,39 @@ final readonly class SchemaContract
         return implode("\n", $lines);
     }
 
-    private function describeColumn(ColumnDefinition $column): string
+    /**
+     * Whether any visible column takes a date or date-time filter value.
+     *
+     * Gates the format note, so a resource with no temporal filter does not pay
+     * for a sentence about one on every step.
+     */
+    private function hasTemporalFilter(): bool
+    {
+        foreach ($this->columns() as $path => $column) {
+            $type = $column->isFilterable() ? $this->schema->typeOf($path, $column) : null;
+
+            if ($type === ColumnType::Date || $type === ColumnType::Datetime) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function describeColumn(string $path, ColumnDefinition $column): string
     {
         $parts = [];
 
         if ($column->description() !== null) {
             $parts[] = $column->description();
+        }
+
+        // Only where it changes what the agent may write: a type it cannot act
+        // on is a token cost on every step for nothing.
+        $type = $column->isFilterable() ? $this->schema->typeOf($path, $column) : null;
+
+        if ($type !== null && $type->constrainsValues()) {
+            $parts[] = $type->value;
         }
 
         if ($column->unit() !== null) {
