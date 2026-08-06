@@ -57,7 +57,8 @@ A declared column is selectable and nothing else. Each capability is opt-in, on
 - `typed(string)` — `string` `integer` `number` `boolean` `date` `datetime`. Only needed where the
   model's casts do not already say; filter values are checked against it either way
 - `filterable(array)` — permitted operators: `=` `!=` `>` `>=` `<` `<=` `between` `in` `not_in`
-  `like` `is_null` `is_not_null`
+  `like` `is_null` `is_not_null`. A date column permitting `between` also derives `within`, which
+  takes a named range the package resolves; it needs no declaration
 - `aggregatable(array)` — `sum` `avg` `min` `max` `count` `count_distinct`
 - `groupable()`, `groupableBy(array)` — `day` `week` `month` `quarter` `year`
 - `sortable()`, `selectable(false)`
@@ -171,7 +172,7 @@ Key behaviours to rely on:
   because the result would be silently inflated; aggregate on the joined side instead
 - do not rely on Eloquent global scopes for joined models; use `RelationDefinition::alwaysScope()`
 - do not feed query results back into a prompt as trusted input
-- do not expect a relative date such as `now-30d` to be resolved — it is rejected with
-  `value_type_mismatch`. Put the current time in your own per-request system prompt and have the
-  agent send absolute values; the resource contract stays identical between requests so a provider
-  can cache it
+- do not have the agent compute dates. A date column that permits `between` also accepts the
+  `within` operator with a named range (`last_30_days`, `last_month`, `year_to_date`,
+  `last_<N>_<seconds|minutes|hours|days|weeks|months|years>`), resolved by the package. Free-text
+  relative values such as `now-30d` are rejected — the grammar is closed on purpose

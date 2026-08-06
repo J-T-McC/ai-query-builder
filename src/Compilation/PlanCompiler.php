@@ -227,7 +227,9 @@ final class PlanCompiler
         $values = is_array($condition->value) ? array_values($condition->value) : [];
 
         match ($condition->operator) {
-            Operator::Between => $query->whereBetween($column, $values, $boolean),
+            // The validator has already turned the named window into the two
+            // bounds it stands for, so there is nothing left to interpret here.
+            Operator::Between, Operator::Within => $query->whereBetween($column, $values, $boolean),
             Operator::In => $query->whereIn($column, $values, $boolean),
             Operator::NotIn => $query->whereIn($column, $values, $boolean, true),
             Operator::IsNull => $query->whereNull($column, $boolean),

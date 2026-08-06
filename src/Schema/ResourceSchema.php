@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
 use JTMcC\AiQueryBuilder\Schema\Concerns\DefinesStructure;
 use JTMcC\AiQueryBuilder\Schema\Enums\ColumnType;
+use JTMcC\AiQueryBuilder\Schema\Enums\Operator;
 
 /**
  * The allow-list for one queryable resource.
@@ -176,6 +177,27 @@ final class ResourceSchema
         }
 
         return ($this->types ??= new ColumnTypeResolver($this->model))->resolve($path, $column);
+    }
+
+    /**
+     * Whether a column accepts a named date range as well as a literal one.
+     *
+     * Derived rather than declared: `within` compiles to the same bounded
+     * comparison `between` already permits, on bounds the package works out
+     * instead of the agent. It grants no reach a schema author did not already
+     * grant, so requiring a second declaration would be friction for nothing.
+     */
+    public function permitsWindow(string $path, ?ColumnDefinition $column = null): bool
+    {
+        $column ??= $this->findColumn($path);
+
+        if ($column === null || ! $column->allowsOperator(Operator::Between)) {
+            return false;
+        }
+
+        $type = $this->typeOf($path, $column);
+
+        return $type === ColumnType::Date || $type === ColumnType::Datetime;
     }
 
     /** @return class-string<Model>|null */
