@@ -264,6 +264,19 @@ middleware is the only thing between this endpoint and the internet.
 structured errors. The resource comes from the URL, so a route protected for one resource cannot
 be used to query another. Compiled SQL is never returned to the client.
 
+## In practice
+
+Two turns against a real application — a webhook proxy service — with one resource declared and
+`QueryDataTool` registered on an existing agent.
+
+<p align="center">
+    <img src="https://raw.githubusercontent.com/J-T-McC/ai-query-builder/main/art/example-1.png" width="760" alt="An agent listing proxies, noting that retired ones were excluded and that the result was not truncated">
+</p>
+
+<p align="center">
+    <img src="https://raw.githubusercontent.com/J-T-McC/ai-query-builder/main/art/example-2.png" width="760" alt="An agent producing a delivery report from four separate query plans">
+</p>
+
 ## Auditing
 
 `QueryPlanExecuted` is the audit record — plan, SQL, bindings, user, prompt, row count, duration
