@@ -122,6 +122,32 @@ describe('prompt rendering', function () {
             ->toContain('Returns 100 rows unless a limit is given, up to 1000')
             ->toContain('at most 2 relations');
     });
+
+    it('does not double the full stop when a description ends in one', function () {
+        $schema = ResourceSchema::make()
+            ->for(Invoice::class)
+            ->name('invoices')
+            ->column('id', fn (ColumnDefinition $c) => $c->describe('Primary key.')->sortable());
+
+        expect(SchemaContract::for($schema)->toPrompt())
+            ->toContain('Primary key. select, sort')
+            ->not->toContain('..');
+    });
+});
+
+describe('fingerprint', function () {
+    it('is stable across builds, so the payload is cacheable', function () {
+        expect(contract()->fingerprint())->toBe(contract()->fingerprint());
+    });
+
+    it('differs for a user who is shown more', function () {
+        expect(contract()->fingerprint())->not->toBe(contract(new User)->fingerprint());
+    });
+
+    it('changes when the schema changes what an agent is told', function () {
+        expect(SchemaContract::for(InvoiceSchema::make()->maxLimit(10))->fingerprint())
+            ->not->toBe(contract()->fingerprint());
+    });
 });
 
 describe('json schema', function () {

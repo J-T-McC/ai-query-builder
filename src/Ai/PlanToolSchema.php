@@ -17,6 +17,12 @@ use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
  * Usable anywhere the AI SDK wants a schema: a Tool's `schema()`, or an agent
  * implementing `HasStructuredOutput`.
  *
+ * It describes a plan for one resource and does not include the resource name.
+ * Which resource is being queried is the caller's decision, not the model's, so
+ * the caller sets it on the plan before running it — QueryDataTool does exactly
+ * that. `SchemaContract::toJsonSchema()` is the rendering to use when a plan has
+ * to travel on its own and name its own resource.
+ *
  * Laravel's JsonSchema builder has no `$ref`, so a recursive filter tree cannot
  * be expressed the way SchemaContract::toJsonSchema does it. Groups are inlined
  * to a fixed depth instead: the innermost level accepts only conditions. That
@@ -50,11 +56,10 @@ final readonly class PlanToolSchema
         $groupable = $this->pathsWhere($columns, static fn (ColumnDefinition $c): bool => $c->isGroupable());
         $sortable = $this->pathsWhere($columns, static fn (ColumnDefinition $c): bool => $c->isSortable());
 
+        // No `resource` property. The caller knows which resource it built this
+        // schema for and sets it on the plan itself, so asking the model to
+        // echo a single-value enum back is bytes on every step for nothing.
         $properties = [
-            'resource' => $schema->string()
-                ->enum([$data['resource']])
-                ->description('The resource being queried.')
-                ->required(),
             'select' => $schema->array()
                 ->items($this->select($schema, array_values(array_unique([...$selectable, ...$aggregatable])), $columns))
                 ->min(1)

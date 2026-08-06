@@ -23,6 +23,18 @@ it('rejects a model that is not an eloquent model', function () {
     ResourceSchema::make()->for(stdClass::class);
 })->throws(SchemaDefinitionException::class, 'stdClass');
 
+it('rejects a resource name a provider would refuse as a tool name', function (string $name) {
+    ResourceSchema::make()->for(User::class)->name($name);
+})->with([
+    'a space' => 'sales invoices',
+    'a dot' => 'sales.invoices',
+    'empty' => '',
+])->throws(SchemaDefinitionException::class);
+
+it('accepts a resource name a provider would accept', function (string $name) {
+    expect(ResourceSchema::make()->for(User::class)->name($name)->resourceName())->toBe($name);
+})->with(['invoices', 'delivery_attempts', 'proxy-logs', 'v2']);
+
 it('declares columns via a closure', function () {
     $schema = ResourceSchema::make()
         ->for(User::class)

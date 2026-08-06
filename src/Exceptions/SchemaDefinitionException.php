@@ -47,6 +47,13 @@ class SchemaDefinitionException extends InvalidArgumentException
         return new self("A resource named [{$name}] is already registered.");
     }
 
+    public static function invalidResourceName(string $name): self
+    {
+        return new self(
+            "The resource name [{$name}] is not usable as a tool name. Use only letters, numbers, underscores and hyphens.",
+        );
+    }
+
     public static function missingResourceName(string $definition): self
     {
         return new self("The schema definition [{$definition}] did not declare a resource name.");

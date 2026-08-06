@@ -34,12 +34,27 @@ use Laravel\Ai\Tools\Request;
  */
 final class QueryDataTool implements Tool
 {
+    private ?SchemaContract $contract = null;
+
     public function __construct(
         private readonly string $resource,
         private readonly ?Authenticatable $user = null,
         private ?SchemaRegistry $registry = null,
         private ?QueryRunner $runner = null,
+        private readonly int $filterDepth = PlanToolSchema::DEFAULT_FILTER_DEPTH,
     ) {}
+
+    /**
+     * The name the model calls this tool by.
+     *
+     * Without one, Laravel\Ai\Tools\ToolNameResolver falls back to the class
+     * basename and every instance is called QueryDataTool — so two resources on
+     * one agent produce duplicate tool names, which providers reject outright.
+     */
+    public function name(): string
+    {
+        return 'query_'.$this->resource;
+    }
 
     /**
      * The data dictionary, scoped to this user. Columns they cannot see are absent.
@@ -50,11 +65,18 @@ final class QueryDataTool implements Tool
     }
 
     /**
+     * Each inlined filter level repeats the column and operator enums, so
+     * `filterDepth` is close to a linear multiplier on the largest part of the
+     * schema. Lowering it bounds only what the model is shown: the validator
+     * still allows whatever `maxFilterDepth` allows.
+     *
+     * Measure the difference with `ai-query:describe {resource} --cost`.
+     *
      * @return array<string, Type>
      */
     public function schema(JsonSchema $schema): array
     {
-        return (new PlanToolSchema($this->contract()))->build($schema);
+        return (new PlanToolSchema($this->contract(), $this->filterDepth))->build($schema);
     }
 
     /**
@@ -85,9 +107,13 @@ final class QueryDataTool implements Tool
         }
     }
 
+    /**
+     * Built once per instance: the acting user is fixed for its lifetime, and
+     * rebuilding re-runs every `visibleWhen` check on a hot path.
+     */
     private function contract(): SchemaContract
     {
-        return SchemaContract::for($this->registry()->get($this->resource), $this->user);
+        return $this->contract ??= SchemaContract::for($this->registry()->get($this->resource), $this->user);
     }
 
     private function registry(): SchemaRegistry

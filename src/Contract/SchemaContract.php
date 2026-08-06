@@ -79,6 +79,24 @@ final readonly class SchemaContract
     }
 
     /**
+     * A stable hash of everything this contract exposes.
+     *
+     * Two contracts that would tell an agent the same thing hash the same, and
+     * anything that changes what a user is told — a schema edit, a `visibleWhen`
+     * that now resolves differently — changes the hash.
+     *
+     * That makes two things testable. A provider only serves a cached prompt
+     * prefix when it is byte-identical between requests, so a stable
+     * fingerprint is evidence the payload is cacheable at all. And it is the
+     * cache key for anything that stores a plan: a plan generated against one
+     * contract must not be replayed against another.
+     */
+    public function fingerprint(): string
+    {
+        return hash('sha256', (string) json_encode($this->toArray()));
+    }
+
+    /**
      * A JSON Schema constraining every plan this resource accepts.
      *
      * @return array<string, mixed>
@@ -164,7 +182,9 @@ final readonly class SchemaContract
         $parts = [];
 
         if ($column->description() !== null) {
-            $parts[] = $column->description();
+            // Parts are joined with '. ', and ending a description with a full
+            // stop is the obvious thing to write.
+            $parts[] = rtrim($column->description(), '.');
         }
 
         // Only where it changes what the agent may write: a type it cannot act
