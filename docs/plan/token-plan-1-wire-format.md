@@ -282,16 +282,28 @@ a dot throws `SchemaDefinitionException` at registration.
 
 **Size:** S.
 
-## 7. Stay cacheable, and file it upstream
+## 7. Stay cacheable, and document how
 
 `laravel/ai` never sets `cache_control` — `grep -r cache_control vendor/laravel/ai/src` returns
 nothing. The identical tool prefix is re-billed at full input price on every step. Cache reads run
 at roughly a tenth of input price, so caching a 12,700-token prefix saves more than every item in
 this plan combined.
 
-That cannot be fixed from inside this package. Two things are in scope:
+> **Corrected 2026-08-06.** This section originally concluded that the fix was upstream and out of
+> reach. The grep was right and the conclusion was wrong: the SDK does not set `cache_control` for
+> you, but `BuildsTextRequests` ends in `array_merge($body, $providerOptions)`, so an agent
+> implementing `HasProviderOptions` can put it on the request body itself. Measured on a
+> 6-resource app, a warm request billed ~3,210 against ~30,062 uncached — 89% off. Documenting
+> that is worth more than every other item in this plan, and it costs a README section.
+>
+> What remains genuinely upstream is *fine-grained* placement: a breakpoint on the last tool
+> definition, so the stable tool block caches independently of the growing conversation. Only
+> top-level auto-placement is reachable through body keys.
 
-**7.1 File it upstream**, with the numbers item 1 produces.
+**7.1 Document it in the README** — the `providerOptions` binding, and the prefix-stability trap
+that comes with it. A volatile value anywhere ahead of the breakpoint, most often a timestamp in
+the agent's instructions, writes a fresh cache entry on every request and reads none. The symptom
+is a bill, not an error.
 
 **7.2 Add `SchemaContract::fingerprint()`** — a hash over the canonical `toArray()`. A cached
 prefix only hits if it is byte-identical between requests, so anything non-deterministic in

@@ -128,6 +128,11 @@ final class DescribeSchemaCommand extends Command
         $this->newLine();
         $this->components->info('Token counts are a chars/4 estimate, not a tokenizer count.');
 
+        // Shrinking the payload is the second lever, not the first. A warm
+        // prompt cache bills this whole block at roughly a tenth, which is
+        // worth more than anything the numbers above can be reduced to.
+        $this->components->info('Enable prompt caching before optimising this. It bills a warm prefix at ~10% — see the README.');
+
         return self::SUCCESS;
     }
 
