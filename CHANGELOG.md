@@ -1,6 +1,26 @@
 # Release Notes
 
-## [Unreleased](https://github.com/j-t-mcc/ai-query-builder/compare/v0.1.0...HEAD)
+## [Unreleased](https://github.com/j-t-mcc/ai-query-builder/compare/v0.1.1...HEAD)
+
+## [v0.1.1](https://github.com/j-t-mcc/ai-query-builder/compare/v0.1.0...v0.1.1) - 2026-08-06
+
+Corrects the Composer vendor prefix. No functional changes.
+
+The package was first published as `j-t-mcc/ai-query-builder`, which did not match
+the `jtmcc/` prefix used by this author's other packages. Packagist cannot rename a
+package, so the manifest was corrected and the package re-submitted.
+
+### Installing
+
+```bash
+composer require jtmcc/ai-query-builder
+
+```
+**v0.1.0 is not installable.** Packagist matches the package name in `composer.json`
+at each tag, and that tag carries the old vendor. Start from v0.1.1.
+
+Everything else is unchanged from v0.1.0: PHP 8.3+, Laravel 13.16+, and the same
+API surface.
 
 ## [v0.1.0](https://github.com/j-t-mcc/ai-query-builder/compare/v0.1.0...v0.1.0) - 2026-08-05
 
