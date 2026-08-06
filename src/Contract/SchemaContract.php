@@ -7,6 +7,7 @@ namespace JTMcC\AiQueryBuilder\Contract;
 use Illuminate\Contracts\Auth\Authenticatable;
 use JTMcC\AiQueryBuilder\Plan\TimeWindow;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\Limits;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 
 /**
@@ -41,6 +42,11 @@ final readonly class SchemaContract
         return $this->schema->visibleColumnMap($this->user);
     }
 
+    public function limits(): Limits
+    {
+        return $this->schema->limits();
+    }
+
     /**
      * The data dictionary as structured data.
      *
@@ -48,7 +54,7 @@ final readonly class SchemaContract
      */
     public function toArray(): array
     {
-        $limits = $this->schema->limits();
+        $limits = $this->limits();
         $columns = [];
 
         foreach ($this->columns() as $path => $column) {

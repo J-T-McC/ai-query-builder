@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\JsonSchema\Types\ObjectType;
 use Illuminate\JsonSchema\Types\Type;
+use JTMcC\AiQueryBuilder\Ai\PlanSchemaDetail;
 use JTMcC\AiQueryBuilder\Ai\PlanToolSchema;
 use JTMcC\AiQueryBuilder\Contract\SchemaContract;
 use JTMcC\AiQueryBuilder\Schema\SchemaRegistry;
@@ -106,7 +107,21 @@ final class DescribeSchemaCommand extends Command
                 'depth '.$depth,
                 $depth === PlanToolSchema::DEFAULT_FILTER_DEPTH
                     ? number_format($at).' <fg=gray>current</>'
-                    : sprintf('%s <fg=gray>%s%s</>', number_format($at), $at > $schema ? '+' : '-', number_format(abs($at - $schema))),
+                    : $this->delta($at, $schema),
+            );
+        }
+
+        $this->newLine();
+        $this->components->twoColumnDetail('<fg=gray>input_schema by detail level</>', '<fg=gray>chars / against current</>');
+
+        foreach (PlanSchemaDetail::cases() as $detail) {
+            $at = strlen($this->encode($this->schemaProperties($contract, PlanToolSchema::DEFAULT_FILTER_DEPTH, $detail)));
+
+            $this->components->twoColumnDetail(
+                lcfirst($detail->name),
+                $detail === PlanSchemaDetail::Enumerated
+                    ? number_format($at).' <fg=gray>current</>'
+                    : $this->delta($at, $schema),
             );
         }
 
@@ -119,9 +134,22 @@ final class DescribeSchemaCommand extends Command
     /**
      * @return array<string, Type>
      */
-    private function schemaProperties(SchemaContract $contract, int $depth): array
+    private function schemaProperties(
+        SchemaContract $contract,
+        int $depth,
+        PlanSchemaDetail $detail = PlanSchemaDetail::Enumerated,
+    ): array {
+        return (new PlanToolSchema($contract, $depth, $detail))->build(new JsonSchemaTypeFactory);
+    }
+
+    private function delta(int $chars, int $against): string
     {
-        return (new PlanToolSchema($contract, $depth))->build(new JsonSchemaTypeFactory);
+        return sprintf(
+            '%s <fg=gray>%s%s</>',
+            number_format($chars),
+            $chars > $against ? '+' : '-',
+            number_format(abs($chars - $against)),
+        );
     }
 
     /**

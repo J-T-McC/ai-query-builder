@@ -47,6 +47,11 @@ class SchemaDefinitionException extends InvalidArgumentException
         return new self("A resource named [{$name}] is already registered.");
     }
 
+    public static function emptyResourceList(string $tool): self
+    {
+        return new self("The tool [{$tool}] was given no resources. Name at least one it may query.");
+    }
+
     public static function invalidResourceName(string $name): self
     {
         return new self(

@@ -42,6 +42,7 @@ final class QueryDataTool implements Tool
         private ?SchemaRegistry $registry = null,
         private ?QueryRunner $runner = null,
         private readonly int $filterDepth = PlanToolSchema::DEFAULT_FILTER_DEPTH,
+        private readonly PlanSchemaDetail $detail = PlanSchemaDetail::Enumerated,
     ) {}
 
     /**
@@ -70,13 +71,16 @@ final class QueryDataTool implements Tool
      * schema. Lowering it bounds only what the model is shown: the validator
      * still allows whatever `maxFilterDepth` allows.
      *
+     * `detail` trades the same schema's enums for the dictionary's prose, which
+     * stops it growing with the contract at the cost of weaker steering.
+     *
      * Measure the difference with `ai-query:describe {resource} --cost`.
      *
      * @return array<string, Type>
      */
     public function schema(JsonSchema $schema): array
     {
-        return (new PlanToolSchema($this->contract(), $this->filterDepth))->build($schema);
+        return (new PlanToolSchema($this->contract(), $this->filterDepth, $this->detail))->build($schema);
     }
 
     /**
