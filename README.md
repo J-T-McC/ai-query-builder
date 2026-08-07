@@ -56,14 +56,18 @@ php artisan ai-query:make-schema "App\Models\Invoice"
 Every column is written out commented, so opting in is a deliberate edit. Columns whose names look
 like secrets are skipped entirely.
 
+This example uses every capability, as a reference:
+
 ```php
 namespace App\AiQueries;
 
 use App\Models\Invoice;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\JoinClause;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
 use JTMcC\AiQueryBuilder\Schema\Contracts\DefinesQuerySchema;
+use JTMcC\AiQueryBuilder\Schema\PivotDefinition;
 use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 
@@ -78,22 +82,37 @@ final class InvoiceQuerySchema implements DefinesQuerySchema
 
             ->column('id', fn (ColumnDefinition $c) => $c->as('invoice_id')->sortable())
 
+            // The value type comes from the model's casts. `issued_at` is cast
+            // to `date`, so filter values are checked against that and the
+            // column earns `within` for free.
             ->column('issued_at', fn (ColumnDefinition $c) => $c
                 ->describe('Date the invoice was issued')
                 ->filterable(['=', '>', '<', '>=', '<=', 'between'])
                 ->groupableBy(['day', 'month', 'quarter', 'year'])
                 ->sortable())
 
+            // Nothing casts this one, so the type is declared. Without it,
+            // nothing checks what an agent puts in a filter.
+            ->column('due_at', fn (ColumnDefinition $c) => $c
+                ->typed('datetime')
+                ->filterable(['>', '<', 'between', 'is_null'])
+                ->sortable())
+
             ->column('total', fn (ColumnDefinition $c) => $c
+                ->describe('Invoice total, tax included')
                 ->measuredIn('currency:USD')
-                ->aggregatable(['sum', 'avg', 'min', 'max'])
+                ->aggregatable(['sum', 'avg', 'min', 'max', 'count'])
                 ->filterable(['>', '<', 'between'])
                 ->sortable())
 
             ->column('status', fn (ColumnDefinition $c) => $c
                 ->enum(['draft', 'sent', 'paid', 'void'])
-                ->filterable(['=', 'in'])
+                ->filterable(['=', '!=', 'in', 'not_in'])
                 ->groupable())
+
+            ->column('reference', fn (ColumnDefinition $c) => $c
+                ->typed('string')
+                ->filterable(['=', 'like']))
 
             // Filterable but never selectable: an agent can slice by margin
             // without ever seeing it.
@@ -106,20 +125,41 @@ final class InvoiceQuerySchema implements DefinesQuerySchema
             ->column('customer_notes', fn (ColumnDefinition $c) => $c
                 ->visibleWhen(fn (?Authenticatable $user) => $user?->can('viewInvoiceNotes') ?? false))
 
+            // hasMany, with a nested belongsTo underneath it.
             ->relation('lines', fn (RelationDefinition $r) => $r
-                ->column('quantity', fn (ColumnDefinition $c) => $c->aggregatable(['sum']))
+                ->describe('Line items on the invoice')
+                ->column('quantity', fn (ColumnDefinition $c) => $c
+                    ->aggregatable(['sum', 'avg'])
+                    ->filterable(['>', '<']))
                 ->relation('product', fn (RelationDefinition $p) => $p
+                    ->column('name', fn (ColumnDefinition $c) => $c->filterable(['=', 'like']))
                     ->column('type', fn (ColumnDefinition $c) => $c
                         ->enum(['widget', 'service'])
                         ->filterable(['=', 'in'])
                         ->groupable())))
+
+            // belongsToMany, with columns on the pivot table and a condition
+            // that constrains the link rather than the tag.
+            ->relation('tags', fn (RelationDefinition $t) => $t
+                ->column('name', fn (ColumnDefinition $c) => $c
+                    ->filterable(['=', 'in'])
+                    ->groupable())
+                ->pivot(fn (PivotDefinition $p) => $p
+                    ->column('assigned_at', fn (ColumnDefinition $c) => $c
+                        ->typed('date')
+                        ->filterable(['=', 'between'])))
+                ->alwaysPivotScope(fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join
+                    ->whereNull("{$alias}.revoked_at")))
 
             // Applied to every query, before anything in the plan.
             ->alwaysScope(fn (Builder $query, ?Authenticatable $user) => $query
                 ->where('invoices.tenant_id', $user?->tenant_id))
 
             ->defaultLimit(100)
-            ->maxLimit(1000);
+            ->maxLimit(1000)
+            ->maxRelationDepth(2)
+            ->maxFilterDepth(5)
+            ->maxFilterNodes(50);
     }
 }
 ```
