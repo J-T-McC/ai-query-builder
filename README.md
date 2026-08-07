@@ -12,10 +12,9 @@
 
 A safe boundary between an AI agent and your database.
 
-You declare exactly what an agent may select, filter, join, group and sort. It emits a **query
-plan** — never SQL. The package validates every token in that plan against your declaration,
-compiles it to an Eloquent query with scopes the plan cannot express, and runs it under explicit
-limits.
+You declare what an agent may select, filter, join, group and sort. The agent emits a **query
+plan** — never SQL. The package checks every part of that plan against your declaration, compiles
+it to an Eloquent query, adds scopes the plan cannot touch, and runs it under limits you set.
 
 **This is not an AI layer.** It sits underneath whichever one you already have.
 
@@ -33,9 +32,8 @@ user prompt ──▶ [ your AI layer ] ──▶ query plan (untrusted JSON)
 
 ## Requirements
 
-PHP 8.3+ and Laravel 13.16+. The AI adapter builds its schema with
-`Illuminate\JsonSchema`, whose `anyOf()` the nested filter schema depends on, and that
-arrived in 13.16.
+PHP 8.3+ and Laravel 13.16+ — the AI adapter builds its schema with `Illuminate\JsonSchema`, whose
+`anyOf()` arrived in 13.16.
 
 ## Installation
 
@@ -46,15 +44,17 @@ php artisan vendor:publish --tag="ai-query-builder-config"
 
 ## Defining a resource
 
-Nothing is exposed until you declare it. A declared column is selectable and *nothing else* until
-you grant each capability explicitly.
+Nothing is exposed until you declare it. A declared column is selectable and nothing else until
+you grant each capability.
+
+Scaffold one from a model:
 
 ```bash
 php artisan ai-query:make-schema "App\Models\Invoice"
 ```
 
-That writes a draft with every column commented out — opting in is a deliberate edit. Columns
-whose names suggest secrets are not scaffolded at all.
+Every column is written out commented, so opting in is a deliberate edit. Columns whose names look
+like secrets are skipped entirely.
 
 ```php
 namespace App\AiQueries;
@@ -78,9 +78,6 @@ final class InvoiceQuerySchema implements DefinesQuerySchema
 
             ->column('id', fn (ColumnDefinition $c) => $c->as('invoice_id')->sortable())
 
-            // The type comes from the model's casts, so a filter value that is
-            // not a real date is rejected. Declare it with ->typed('date') only
-            // where the casts do not already say.
             ->column('issued_at', fn (ColumnDefinition $c) => $c
                 ->describe('Date the invoice was issued')
                 ->filterable(['=', '>', '<', '>=', '<=', 'between'])
@@ -104,12 +101,11 @@ final class InvoiceQuerySchema implements DefinesQuerySchema
                 ->filterable(['>', '<'])
                 ->selectable(false))
 
-            // Hidden unless the check passes. A hidden column is absent from the
-            // contract entirely, so an agent never learns it exists.
+            // Hidden columns are absent from the contract, so an agent never
+            // learns they exist.
             ->column('customer_notes', fn (ColumnDefinition $c) => $c
                 ->visibleWhen(fn (?Authenticatable $user) => $user?->can('viewInvoiceNotes') ?? false))
 
-            // Traversal is by declared relation only. An agent cannot express a join.
             ->relation('lines', fn (RelationDefinition $r) => $r
                 ->column('quantity', fn (ColumnDefinition $c) => $c->aggregatable(['sum']))
                 ->relation('product', fn (RelationDefinition $p) => $p
@@ -118,8 +114,7 @@ final class InvoiceQuerySchema implements DefinesQuerySchema
                         ->filterable(['=', 'in'])
                         ->groupable())))
 
-            // Applied to every query, before anything in a plan. No plan can
-            // express these, so no plan can remove them.
+            // Applied to every query, before anything in the plan.
             ->alwaysScope(fn (Builder $query, ?Authenticatable $user) => $query
                 ->where('invoices.tenant_id', $user?->tenant_id))
 
@@ -138,26 +133,57 @@ Register it:
 ],
 ```
 
-Check what an agent will actually be told — including as a specific user, which is the only way
-to confirm a gated column is really hidden:
+### Column capabilities
+
+| Method | What it grants |
+|---|---|
+| `as('alias')` | Expose the column under a different name |
+| `describe('…')` | A note the agent sees |
+| `measuredIn('currency:USD')` | A unit the agent sees, so it narrates numbers correctly |
+| `typed('date')` | The value type, when the model's casts don't say |
+| `enum([...])` | A closed set of permitted values |
+| `filterable([...])` | `=` `!=` `>` `>=` `<` `<=` `between` `in` `not_in` `like` `is_null` `is_not_null` |
+| `aggregatable([...])` | `sum` `avg` `min` `max` `count` `count_distinct` |
+| `groupable()` / `groupableBy([...])` | Group by the value, or by `day` `week` `month` `quarter` `year` |
+| `sortable()` | Sort by the column |
+| `selectable(false)` | Usable in filters, never returned |
+| `visibleWhen(fn ($user) => …)` | Hide the column from users who fail the check |
+
+Resource-level settings: `defaultLimit()`, `maxLimit()`, `maxRelationDepth()`, `maxFilterDepth()`,
+`maxFilterNodes()`.
+
+### Checking what the agent sees
 
 ```bash
-php artisan ai-query:describe invoices --user=1
-php artisan ai-query:describe invoices --json
+php artisan ai-query:describe invoices           # the prompt text
+php artisan ai-query:describe invoices --json    # the JSON Schema
+php artisan ai-query:describe invoices --user=1  # as that user sees it
+php artisan ai-query:describe invoices --cost    # what it weighs in tokens
 ```
 
-Both halves of that contract — the dictionary and the plan schema — are resent on every step of
-an agent loop, so a resource that is expensive to describe is expensive on turns that never query
-it. `--cost` reports what it weighs, broken down by plan property and by filter depth:
+Use `--user` to confirm a `visibleWhen` column really is hidden. Reading the schema class cannot
+tell you that.
 
-```bash
-php artisan ai-query:describe invoices --cost
-```
+Both halves of the contract are resent on every step of an agent loop, so a resource that is
+expensive to describe costs tokens even on turns that never query it. `--cost` breaks that down by
+plan property and filter depth.
+
+## Relations
+
+An agent traverses relations by dotted path — `lines.product.type` — and the compiler derives the
+joins. An agent cannot express a join itself.
+
+Supported: `hasOne`, `hasMany`, `belongsTo`, `belongsToMany`, `hasOneThrough`, `hasManyThrough`,
+`morphOne`, `morphMany`, `morphToMany`.
+
+`morphTo` cannot be joined and raises an error. The table it points at is stored per row rather
+than fixed by the schema, so there is nothing to join to. Expose each concrete model as its own
+resource instead.
 
 ### Join aliases
 
-Every joined table is aliased to its relation path. `lines` is joined as `lines`, and
-`lines.product` as `lines__product`:
+Every joined table is aliased to its relation path, so two paths can reach the same table without
+colliding:
 
 ```sql
 from "invoices"
@@ -165,19 +191,10 @@ left join "invoice_lines" as "lines"          on "invoices"."id" = "lines"."invo
 left join "products"      as "lines__product" on "lines"."product_id" = "lines__product"."id"
 ```
 
-Without this, two paths reaching the same table compile to two joins of that table and every
-column reference between them is ambiguous — `author.company.name` alongside
-`publisher.company.name` is a query the database refuses to run. Aliasing also lets a relation
-reach a table that is already the root.
+The root table is not aliased, so a resource-level `alwaysScope` names it directly.
 
-Every join is aliased, including the ones that would not collide. An alias that appeared only
-when it was needed would mean a relation scope worked until the day someone declared a second path
-to the same table.
-
-The root is **not** aliased, so a resource-level `alwaysScope` keeps naming the real table.
-
-A relation-level `alwaysScope` receives the alias as its third argument, and should qualify
-columns with it rather than with the table name:
+A relation-level `alwaysScope` adds a condition to that relation's `ON` clause. It receives the
+alias as its third argument — qualify columns with that, not with the table name:
 
 ```php
 ->relation('lines', fn (RelationDefinition $r) => $r
@@ -186,18 +203,19 @@ columns with it rather than with the table name:
         ->where("{$alias}.quantity", '>', 0)))
 ```
 
-Aliases are derived from the path alone, so the same plan always compiles to the same SQL.
+Laravel does not apply a model's global scopes to a join, so anything that must hold for joined
+rows belongs in `alwaysScope`. Soft deletes are the exception — see below.
 
-### Many-to-many relations
+### Many-to-many
 
-A `belongsToMany` is declared like any other relation, and traversed the same way:
+Declare a `belongsToMany` like any other relation:
 
 ```php
 ->relation('tags', fn (RelationDefinition $t) => $t
     ->column('name', fn (ColumnDefinition $c) => $c->filterable(['=', 'in'])->groupable()))
 ```
 
-It compiles to two joins — the pivot, then the related table hanging off it:
+It compiles to two joins, the pivot and then the related table:
 
 ```sql
 left join "invoice_tag" as "tags__pivot" on "invoices"."id" = "tags__pivot"."invoice_id"
@@ -205,31 +223,22 @@ left join "tags"        as "tags"        on "tags__pivot"."tag_id" = "tags"."id"
                                         and "tags"."deleted_at" is null
 ```
 
-A many-to-many always multiplies parent rows, so it counts as a to-many join for
-[fan-out protection](#known-limits): `sum(total)` while joining `tags` is refused, because it
-would add each invoice once per tag it carries.
+It counts as **one** relation against `maxRelationDepth`, and as a to-many join for
+[fan-out protection](#known-limits).
 
-It counts as **one** relation against `maxRelationDepth`, not two. Depth measures how far an agent
-can reach, not how many joins the compiler writes. Worth knowing when tuning the limit: two
-many-to-many hops is six joins at depth 2.
-
-To constrain the link itself rather than the row it points at — a `revoked_at`, an `is_primary` —
-use `alwaysPivotScope`. It lands on the pivot join, where `alwaysScope` lands on the related one:
+To constrain the link rather than the row it points at — `revoked_at`, `is_primary` — use
+`alwaysPivotScope`. It lands on the pivot join:
 
 ```php
 ->relation('tags', fn (RelationDefinition $t) => $t
+    ->column('name')
     ->alwaysPivotScope(fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join
-        ->whereNull("{$alias}.revoked_at"))
-    ->column('name'))
+        ->whereNull("{$alias}.revoked_at")))
 ```
-
-See also [polymorphic relations](#polymorphic-relations), where the type condition lands on the
-pivot rather than the related table.
 
 #### Pivot columns
 
-Attributes of the link itself — when a tag was assigned, who assigned it — live on the
-intermediate table. Declare them under `pivot()`:
+Attributes of the link itself live on the pivot table. Declare them with `pivot()`:
 
 ```php
 ->relation('tags', fn (RelationDefinition $t) => $t
@@ -240,36 +249,25 @@ intermediate table. Declare them under `pivot()`:
             ->filterable(['=', 'between']))))
 ```
 
-An agent addresses them under a reserved `pivot` segment:
+An agent addresses them under a `pivot` segment, which keeps them distinct from a related column
+of the same name:
 
 ```
 tags.name                 → the tag
 tags.pivot.assigned_at    → the link to it
 ```
 
-The extra segment is the point. Fold pivot columns in beside the related table's and a pivot
-`name` and a tag `name` compete for `tags.name`, with declaration order silently deciding which
-one an agent gets. A path should mean exactly one thing.
+`pivot` is a reserved name; declaring a relation called `pivot` raises an error. The segment does
+not count against `maxRelationDepth`.
 
-`pivot` is therefore reserved: declaring a relation by that name raises at schema-definition time.
-
-The pivot segment does **not** count against `maxRelationDepth`. It reaches the intermediate table
-of a relation already counted, and charging for it would make a many-to-many cost twice what a
-has-many costs to reach the same distance.
-
-**Types are not inferred on a pivot.** Everywhere else the package reads the type off the
-Eloquent model's casts; the intermediate table usually has no model to read. Declare it with
-`typed()` — and it is worth doing, because a pivot date that declares itself gets `within` and
-filter-value checking for free, exactly as a root column would.
-
-Cost, measured on the README's own schema: one declared pivot column adds **124 bytes** to the
-contract (prompt plus JSON Schema), of which the `pivot.` segment is 6. Two extra tokens per pivot
-column is the whole price of the disambiguation.
+Types are not read from casts on a pivot, because the pivot table usually has no model. Declare
+them with `typed()`. It's worth doing: a typed date column also gets `within` support and
+filter-value checking.
 
 ### Through relations
 
-`hasManyThrough` and `hasOneThrough` are traversed like any other relation, and compile to two
-joins — the intermediate table, then the far one:
+`hasManyThrough` and `hasOneThrough` compile to two joins, the intermediate table and then the far
+one:
 
 ```sql
 left join "invoices"      as "lines__through" on "customers"."id" = "lines__through"."customer_id"
@@ -277,42 +275,31 @@ left join "invoices"      as "lines__through" on "customers"."id" = "lines__thro
 left join "invoice_lines" as "lines"          on "lines__through"."id" = "lines"."invoice_id"
 ```
 
-The intermediate table's own soft deletes are applied, and that condition matters more than it
-looks: without it, a line item hanging off a deleted invoice is still reachable *through* the
-customer, even though the invoice itself is gone.
+The intermediate table's soft deletes are applied, so a row hanging off a deleted intermediate is
+not reachable through it.
 
-Like a many-to-many, a through relation counts as **one** relation for `maxRelationDepth`.
-`hasManyThrough` counts as to-many for fan-out; `hasOneThrough` does not.
+Both count as one relation against `maxRelationDepth`. `hasManyThrough` counts as to-many for
+fan-out; `hasOneThrough` does not.
 
 ### Polymorphic relations
 
-`morphOne`, `morphMany` and `morphToMany` are supported. The type condition goes on the join:
+`morphOne`, `morphMany` and `morphToMany` carry their type condition on the join, so a table shared
+by several parent types only ever returns the rows belonging to this one:
 
 ```sql
--- morphMany: on the related table
+-- morphMany: the type sits on the related table
 left join "notes" as "notes" on "invoices"."id" = "notes"."notable_id"
                             and "notes"."notable_type" = ?
 
--- morphToMany: on the pivot, which is where the type is stored
+-- morphToMany: the type sits on the pivot
 left join "taggables" as "tags__pivot" on "invoices"."id" = "tags__pivot"."taggable_id"
                                       and "tags__pivot"."taggable_type" = ?
 ```
 
-This condition is load-bearing rather than cosmetic. A `notes` table shared by invoices and
-products will hand an invoice the products' notes without it — not an error, just another model's
-rows quietly mixed into the answer.
-
-**`morphTo` is refused**, and always will be. Which table it points at is a value stored per row
-rather than a fact about the schema, so there is no table to name in the `FROM` clause. Expose
-each concrete related model as its own resource instead.
-
 ### Soft deletes
 
-Deleted rows are excluded everywhere, not just on the root model.
-
-Eloquent applies `SoftDeletingScope` to the root query, but Laravel applies no global scope to a
-join — so without help, a plan reading `lines.product.name` would read products deleted a year
-ago. The compiler adds the condition itself, on the join's `ON` clause:
+Deleted rows are excluded from joined relations as well as from the root model. The condition goes
+on the `ON` clause:
 
 ```sql
 left join "invoice_lines" as "lines"
@@ -320,17 +307,12 @@ left join "invoice_lines" as "lines"
       and "lines"."deleted_at" is null
 ```
 
-On the `ON` clause rather than in the `WHERE` clause, because the difference is visible: in the
-`WHERE` clause this would turn every left join into an inner one, and an invoice whose only line
-was deleted would vanish from the report. On the `ON` clause the invoice stays and the line reads
-as null.
+On the `ON` clause rather than the `WHERE` clause, so a left join stays a left join: an invoice
+whose only line was deleted still appears, with nulls where the line would have been.
 
-The column comes from the model, so a model that renames it through `DELETED_AT` works without
-configuration. Nothing about this reaches the agent — it is invisible policy, like `alwaysScope`,
-and costs no contract tokens.
+The column name is read from the model, so `DELETED_AT` overrides work without configuration.
 
-If a resource genuinely needs the deleted rows — an audit view, a report on cancellations — opt in
-per relation:
+To include deleted rows — an audit view, a report on cancellations — opt in per relation:
 
 ```php
 ->relation('lines', fn (RelationDefinition $r) => $r
@@ -338,13 +320,13 @@ per relation:
     ->column('quantity', fn (ColumnDefinition $c) => $c->aggregatable(['sum'])))
 ```
 
-There is no `onlyTrashed()`. Declare `deleted_at` as a filterable column instead and let the plan
-say so out loud.
+There is no `onlyTrashed()`. Declare `deleted_at` as a filterable column instead, so the plan says
+what it wants out loud.
 
 ## Query plans
 
-An agent emits a plan. There is no `raw`, no `expression`, no `sql` key — not behind a config
-flag, not anywhere.
+An agent emits a plan. There is no `raw`, no `expression`, no `sql` key — not behind a config flag,
+not anywhere.
 
 ```json
 {
@@ -366,30 +348,26 @@ flag, not anywhere.
 }
 ```
 
-Columns are relation paths. `lines.product.type` implies the joins; the compiler derives them
-from your declared relations.
-
 ### Filter values
 
-A filter value must be of the kind the column holds. The type is read from the model's casts, or
-declared with `->typed()` when the casts do not say. An unrecognised cast means no type and no
-check, so inference never rejects a plan it merely failed to understand.
+A filter value must match the kind of value the column holds. The type comes from the model's
+casts, or from `->typed()`. An unrecognised cast means no type and no check, so type inference
+never rejects a plan it simply could not read.
 
-This exists because the wrong kind of value does not fail anywhere. It validates, binds, runs, and
-the comparison quietly means something else:
+This matters because the wrong kind of value doesn't fail on its own:
 
 ```json
 { "column": "issued_at", "operator": ">=", "value": "now-30d" }
 ```
 
-Nothing evaluates that string. MySQL casts it to a zero date and matches every row; SQLite
-compares it as text and matches none. The query succeeds either way and the agent narrates the
-result as the answer. It is rejected with `value_type_mismatch`.
+Nothing evaluates that string. MySQL reads it as a zero date and matches every row; SQLite compares
+it as text and matches none. Either way the query succeeds and the agent reports the result as the
+answer. The package rejects it with `value_type_mismatch`.
 
 ### Date ranges
 
-An agent should not be doing calendar arithmetic, so it doesn't have to. A date column that
-permits `between` also accepts `within`, which names a range the package resolves:
+A date column that permits `between` also accepts `within`, which names a range the package
+resolves. The agent does no calendar arithmetic:
 
 ```json
 { "column": "issued_at", "operator": "within", "value": "last_30_days" }
@@ -402,26 +380,19 @@ this_year        last_year        month_to_date    quarter_to_date
 year_to_date     last_<N>_<seconds|minutes|hours|days|weeks|months|years>
 ```
 
-Named windows use calendar boundaries — `last_month` is the whole of the previous month, and
-stepping back from the 1st means `last_month` on the 31st of March is February, not March 3rd.
-`last_<N>_<unit>` rolls back from this instant. Bounds are inclusive, and a date column is bound
-as a bare date so the boundary day is not dropped. A window shorter than a day is refused on a
-column that stores no time, rather than quietly collapsing to "today".
+Named windows follow calendar boundaries — `last_month` is the whole of the previous month.
+`last_<N>_<unit>` counts back from now. Bounds are inclusive, and a date column is bound as a bare
+date so the boundary day isn't dropped. A window shorter than a day is rejected on a column that
+stores no time.
 
-`within` needs no declaration: it compiles to the same bounded comparison `between` already
-permits, so it grants no reach you did not already grant.
+`within` needs no declaration. It compiles to the same bounded comparison `between` already
+permits, so it grants no reach you haven't already granted.
 
-**The grammar is closed, and that is the point.** Feeding these strings to a general parser is
-worse, measurably: `strtotime` resolves `now-30d` — the string that caused this — to thirty
-*hours* in the future, reads `01/02/2026` as January whatever the writer meant, and turns
-`last month` into a point in time a month back rather than the month itself, while rejecting
-`last 30 days`, `this quarter` and `year to date` outright. Everything it wrongly rejects is
-named above; everything it wrongly accepts is refused, with `did_you_mean` pointing at the window
-that was meant.
+The grammar is closed — anything outside the list above is rejected, with `did_you_mean` pointing
+at the window that was probably meant.
 
-**The window stays in the plan.** It resolves on each validation, not into the plan, so a stored
-plan replayed next week means the week that has passed rather than the one that had passed when
-it was written. That is what makes a plan worth caching.
+The window stays in the plan and resolves on each run, so a stored plan means the last 30 days
+*today*, not the last 30 days as of when it was written.
 
 ## Running a plan
 
@@ -441,11 +412,11 @@ $result->columns;    // per-alias unit and description metadata
 $result->truncated;  // true when the cap was hit
 ```
 
-`explain($plan)` validates and compiles without executing, returning SQL and bindings for
-human approval or logging.
+`explain($plan)` validates and compiles without executing, returning SQL and bindings for approval
+or logging.
 
-Rejections throw `InvalidQueryPlanException`, carrying every error at once so a plan can be
-corrected in one pass:
+Rejections throw `InvalidQueryPlanException` carrying every error at once, so a plan can be fixed
+in one pass:
 
 ```json
 { "path": "select.1.column", "code": "unknown_column",
@@ -456,7 +427,7 @@ corrected in one pass:
 
 ### Laravel AI SDK
 
-Register the shipped tool on an agent you already have. That is the whole integration.
+Register the shipped tool on an agent you already have:
 
 ```php
 use JTMcC\AiQueryBuilder\Ai\QueryDataTool;
@@ -472,20 +443,18 @@ class AnalystAgent implements Agent, HasTools
 }
 ```
 
-The tool's description is the data dictionary for that user, its schema constrains the model at
-the decoding layer, and a rejection is returned to the model rather than thrown so it can
-correct itself. That makes retries the agent loop's decision — add `#[MaxSteps(1)]` for strictly
-one attempt.
+The tool's description is the data dictionary for that user, and its schema constrains the model
+while it decodes. A rejection is returned to the model rather than thrown, so it can correct
+itself — which makes retries the agent loop's decision. Add `#[MaxSteps(1)]` for a single attempt.
 
 `laravel/ai` is a suggested dependency. The package works without it.
 
 #### Several resources
 
-A tool's description is its resource's whole data dictionary, and its schema enumerates every
-column. Both are resent on every step of the agent loop, so registering six resources means six
-dictionaries on every step — including the turn where the user says hello.
+Each tool carries its resource's full dictionary and column list on every step of the loop, so six
+resources means six dictionaries on every step — including the turn where the user says hello.
 
-Two tools replace that with a short list plus one round-trip:
+Two tools replace that with a short list and one round-trip:
 
 ```php
 use JTMcC\AiQueryBuilder\Facades\AiQueryBuilder;
@@ -497,35 +466,32 @@ public function tools(): iterable
 ```
 
 `describe_query_resource` carries only the resource names and returns one dictionary when asked.
-`query_data` carries a plan schema that describes columns instead of enumerating them, so it does
-not grow as you add resources or columns. Build them from one array — that array is the boundary,
-the way registering one tool per resource used to be.
+`query_data` carries a plan schema that describes columns rather than listing them, so it doesn't
+grow as you add resources or columns.
 
-The trade is real: without enums, nothing constrains column names at the decoding layer, so
-expect more rejections and more corrections. It is an accuracy trade, not a safety one — the
-validator is unchanged, and a column hidden from a user is still reported as *unknown*. Take the
-schema alone on a single-resource tool if you want it without the round-trip:
+The trade-off: without enums, nothing constrains column names while the model decodes, so expect
+more rejections and corrections. It's an accuracy trade, not a safety one — the validator is
+unchanged, and a column hidden from a user is still reported as unknown.
+
+For the smaller schema without the round-trip:
 
 ```php
 new QueryDataTool('invoices', auth()->user(), detail: PlanSchemaDetail::Generic)
 ```
 
-Measure both with `ai-query:describe invoices --cost` before choosing.
+One caveat with `Generic`: enums steer filter *values* as a side effect, so a filterable column
+with no declared or inferred type has nothing checking what goes into it. Add `->typed()` to those
+columns. See [Filter values](#filter-values).
 
-One caveat specific to `Generic`. Enums steer filter *values* as a side effect, and dropping them
-takes that away, so a filterable column whose type is neither declared nor implied by the model's
-casts has nothing checking what goes into it. `->typed()` on those columns is what makes `Generic`
-as safe as `Enumerated` rather than only cheaper. See [Filter values](#filter-values).
+Compare both with `ai-query:describe invoices --cost` before choosing.
 
 #### Prompt caching
 
-**Do this before shrinking anything.** The tool payload is close to the ideal cache target — it is
-large, it renders at the front of the prefix, and it is byte-identical between requests. A warm
-cache bills the whole prefix at roughly a tenth, which is a bigger lever than every wire-format
-saving in this package combined.
+**Do this before shrinking anything.** The tool payload is a good cache target: large, rendered at
+the front of the prefix, and byte-identical between requests. A warm cache bills the prefix at
+roughly a tenth — a bigger saving than any wire-format tuning.
 
-`laravel/ai` never sets `cache_control` itself, but it merges provider options into the request
-body, so an agent can ask for it:
+`laravel/ai` doesn't set `cache_control` itself, but it merges provider options into the request:
 
 ```php
 use Laravel\Ai\Contracts\HasProviderOptions;
@@ -543,29 +509,21 @@ class AnalystAgent implements Agent, HasProviderOptions, HasTools
 }
 ```
 
-**The trap is that caching is a prefix match.** One byte different anywhere before the breakpoint
-re-bills everything after it at full price, and the symptom is not an error — it is a larger
-invoice, with a cache being written on every request and read on none. So a volatile value
-anywhere in your prefix, most commonly a timestamp in your agent's instructions, costs you the
-entire benefit:
+Caching is a prefix match, so one changed byte before the breakpoint re-bills everything after it.
+There's no error when this happens — just a larger invoice, with the cache written every request
+and read never. A timestamp in your agent's instructions is the usual culprit:
 
 ```php
 str_replace('{NOW}', now()->toDateTimeString(), $prompt)   // invalidates every request
 str_replace('{TODAY}', now()->toDateString(), $prompt)     // stable for a day
 ```
 
-Better still, do not put the time in the prefix at all. [Date ranges](#date-ranges) exist partly
-for this: an agent that says `within: last_30_days` never needs to be told what today is.
+Better still, keep the time out of the prefix. [Date ranges](#date-ranges) exist partly for this:
+an agent that says `within: last_30_days` never needs to be told today's date.
 
-**What this package guarantees for you:** `toPrompt()` and the plan schema render identically for
-the same contract and the same user, every build. That is what makes the payload cacheable at all,
-so it is held by tests rather than left to luck — see the `byte stability` block in
-`tests/Unit/Contract/SchemaContractTest.php`. `SchemaContract::fingerprint()` is the same promise
-in a form you can assert on in your own suite.
-
-Cache first, then shrink. With a warm cache the prefix bills at about a tenth, so trimming it is
-worth roughly a tenth of what it was worth uncached — but cold is every first request and every
-change to the prefix, and `Generic` and `filterDepth` still cut that.
+This package renders `toPrompt()` and the plan schema identically for the same contract and user on
+every build, which is what makes the payload cacheable. Tests hold that guarantee, and
+`SchemaContract::fingerprint()` lets you assert it in your own suite.
 
 ### Anything else
 
@@ -627,25 +585,20 @@ middleware is the only thing between this endpoint and the internet.
 }
 ```
 
-`columns` carries the metadata needed to narrate the rows correctly, keyed by result alias — a
-number without its unit is how a model ends up reporting cents as dollars. A column with no
-metadata to report is empty. `truncated` says whether the row cap was hit, so a capped result is
-never mistaken for a complete one.
+`columns` carries the metadata needed to narrate the rows, keyed by result alias — a number without
+its unit is how a model ends up reporting cents as dollars. `truncated` says whether the row cap
+was hit.
 
-`422` with structured errors if the plan is rejected, `404` for an unknown resource — without
-listing the ones that do exist, so an unauthenticated probe cannot enumerate them. The resource
-comes from the URL and overrides any `resource` in the body, so a route protected for one resource
-cannot be used to query another. Compiled SQL is never returned; it would disclose table and column
-names to a client that only needs rows. Use `QueryRunner::explain()` server-side for that.
+Rejected plans return `422` with structured errors. An unknown resource returns `404` without
+listing the ones that exist, so a probe can't enumerate them. The resource comes from the URL and
+overrides any `resource` in the body, so a route protected for one resource can't be used to query
+another. Compiled SQL is never returned; use `QueryRunner::explain()` server-side for that.
 
 #### A plan is a saved query, not a saved result
 
-This is the part worth knowing about. A plan is data, and running one is stateless — so a plan an
-agent wrote once can be stored and re-posted whenever you want the answer again. The expensive,
-non-deterministic step (a model turning a question into a plan) happens once; every run after that
-is a database query with no model involved.
-
-That makes a natural split. Generate with an agent, then keep the plan:
+Running a plan is stateless, so a plan an agent wrote once can be stored and re-posted whenever you
+want the answer again. The expensive step — a model turning a question into a plan — happens once.
+Every run after that is a database query with no model involved.
 
 ```php
 $plan = $agent->generatePlan('revenue by status over the last 30 days');
@@ -653,8 +606,7 @@ $plan = $agent->generatePlan('revenue by status over the last 30 days');
 SavedQuery::create(['user_id' => $user->id, 'name' => 'Revenue by status', 'plan' => $plan]);
 ```
 
-Re-run it from anywhere — a dashboard panel refreshing on an interval, a scheduled export, a
-"refresh" button — by posting the stored plan back:
+Re-run it from a dashboard panel, a scheduled export, or a refresh button:
 
 ```js
 const res = await fetch(`/ai-query/invoices/query`, {
@@ -664,26 +616,21 @@ const res = await fetch(`/ai-query/invoices/query`, {
 })
 ```
 
-**Rolling date ranges are what make this a live query rather than a snapshot.** A stored plan
-holding `"within": "last_30_days"` is resolved at *validation* time, on every run — so the same
-stored bytes mean the thirty days ending today, not the thirty days that had ended when the agent
-wrote it. Store `{"operator": ">=", "value": "2026-07-07"}` instead and you have frozen a moment;
-store `within` and you have saved a question. See [Date ranges](#date-ranges).
+Rolling date ranges are what make this a live query rather than a snapshot. A stored plan holding
+`"within": "last_30_days"` resolves on every run, so the same stored bytes mean the thirty days
+ending today. Store `{"operator": ">=", "value": "2026-07-07"}` instead and you've frozen a moment.
 
-Three properties make stored plans safe to keep around:
+Stored plans stay safe because:
 
-- **Re-validated on every run, never trusted because it ran before.** A plan is checked against the
-  schema each time. If you remove a column, revoke an operator, or lower a row cap, every stored
-  plan that relied on it starts failing with a structured error rather than continuing to work.
-- **Resolved against the caller, not the author.** Validation uses `$request->user()`, so a plan
-  shared between users is re-checked against each one's visibility. A column the current caller
-  cannot see comes back as `unknown_column` — the same answer they would get if it did not exist.
-- **Mandatory scopes apply on every run.** `alwaysScope` is not part of the plan and cannot be
-  expressed in one, so a stored plan cannot outlive or escape the tenancy it was created under.
+- **They're re-validated every run.** Remove a column, revoke an operator or lower a row cap and
+  every stored plan that relied on it starts failing with a structured error.
+- **They resolve against the caller, not the author.** A plan shared between users is re-checked
+  against each one's visibility, so a column the caller can't see comes back as `unknown_column`.
+- **Mandatory scopes apply every run.** `alwaysScope` isn't part of the plan, so a stored plan
+  can't escape the tenancy it was created under.
 
-The stored plan is also readable and diffable, which an opaque saved query rarely is. Users can be
-shown what a saved query actually does, and you can grep your own storage for every plan that
-touches a column before you drop it.
+A stored plan is also readable and diffable, so you can show users what a saved query does and grep
+your storage for every plan touching a column before you drop it.
 
 ## In practice
 
@@ -701,8 +648,8 @@ Two turns against a real application — a webhook proxy service — with one re
 ## Auditing
 
 `QueryPlanExecuted` is the audit record — plan, SQL, bindings, user, prompt, row count, duration
-and truncation flag. The package persists nothing and ships no migration: retention and
-redaction are decisions only your application can make.
+and truncation flag. The package persists nothing and ships no migration: retention and redaction
+are your application's decisions.
 
 ```php
 Event::listen(QueryPlanRejected::class, function ($event) {
@@ -713,61 +660,56 @@ Event::listen(QueryPlanRejected::class, function ($event) {
 });
 ```
 
-`QueryPlanValidated` fires after validation and before compilation — the hook for an approval
-gate. `QueryPlanRejected` carries error codes so you can measure how often an agent produces an
-invalid plan before deciding whether retries are worth the tokens.
+`QueryPlanValidated` fires after validation and before compilation — the hook for an approval gate.
+`QueryPlanRejected` carries error codes, so you can measure how often an agent produces an invalid
+plan before deciding whether retries are worth the tokens.
 
 ## What this protects against, and what it doesn't
 
 **It does:**
 
 - An agent cannot reference a column, relation, operator or function you did not declare.
-- An agent cannot remove a mandatory scope. Its filters are wrapped in a group, so a top-level
-  `or` cannot escape a tenant scope.
+- An agent cannot remove a mandatory scope. Its filters are wrapped in a group, so a top-level `or`
+  cannot escape a tenant scope.
 - Values are always bound as parameters. Identifiers are built from your schema, never from plan
   strings.
-- A tool queries the resource it was constructed for. A plan naming a different registered
-  resource cannot redirect it, so which resources an agent may touch stays your decision about
-  which tools to register.
-- A column hidden from a user is reported as *unknown*, and never appears in a suggestion, so a
+- A tool queries the resource it was built for. A plan naming a different resource cannot redirect
+  it, so which resources an agent may touch stays a decision about which tools you register.
+- A column hidden from a user is reported as unknown and never appears in a suggestion, so a
   rejection cannot confirm it exists.
-- Unknown plan keys are rejected rather than dropped — a silently discarded clause answers a
-  question nobody asked while looking like it answered the one they did.
-- A filter value that is not the kind of thing the column holds is rejected rather than bound.
-  See [Filter values](#filter-values).
-- Soft-deleted rows are excluded from joined relations, not just from the root model.
-  See [Soft deletes](#soft-deletes).
-- A polymorphic join always carries its type condition, so a table shared by several parent types
-  never hands one of them another's rows. See [Polymorphic relations](#polymorphic-relations).
+- Unknown plan keys are rejected rather than ignored, so a dropped clause never looks like an
+  answered one.
+- A filter value of the wrong kind is rejected rather than bound. See
+  [Filter values](#filter-values).
+- Soft-deleted rows are excluded from joined relations, not just the root model.
+- A polymorphic join always carries its type condition, so a shared table never returns another
+  model's rows.
 - Truncated results are flagged rather than passed off as complete.
 
 **It does not:**
 
-- Judge whether a question *should* be asked. Authorization of who may query what is your
-  middleware and your `alwaysScope` closures.
-- Apply Eloquent global scopes to **joined** models — Laravel only applies them to the root
-  query. Soft deletes are the one exception, handled explicitly. Anything else that must hold for
-  joined rows belongs in that relation's `alwaysScope`.
-- Make query results trustworthy input for a later turn. Rows can contain text written by users;
-  treat them as untrusted when they flow back into a prompt.
+- Judge whether a question *should* be asked. Who may query what is your middleware and your
+  `alwaysScope` closures.
+- Apply Eloquent global scopes to joined models — Laravel only applies them to the root query. Soft
+  deletes are handled explicitly; anything else belongs in that relation's `alwaysScope`.
+- Make query results trustworthy input for a later turn. Rows can contain user-written text; treat
+  them as untrusted when they flow back into a prompt.
 - Rate limit. Add that at your middleware or agent layer.
 
 ## Known limits
 
 - **Fan-out aggregates are refused.** Aggregating an invoice column while joining to its lines
-  would count each invoice once per line and return a plausible, inflated number, so the compiler
-  rejects it. Aggregate a column on the joined side instead.
-- `morphTo` cannot be joined and is rejected. The table it points at is a value in the rows, not a
-  fact about the schema.
-- Pivot column types are not inferred, because the intermediate table usually has no model to
-  infer from. Declare them with `typed()`.
-- A through relation's intermediate table is joined but not addressable — there is no path segment
-  for it, the way `pivot` addresses a many-to-many's.
+  would count each invoice once per line and return a plausible but inflated number. Aggregate a
+  column on the joined side instead.
+- `morphTo` cannot be joined and is rejected.
+- Pivot column types are not inferred. Declare them with `typed()`.
+- A through relation's intermediate table is joined but not addressable, the way `pivot` addresses
+  a many-to-many's.
 - Statement timeouts require pgsql, mysql or mariadb. On other drivers a non-null timeout raises
   rather than being silently ignored.
 - No unions, no pagination, no cross-resource joins yet.
-- The JSON Schema does not encode which operators go with which column — that precision lives in
-  the prompt text and is enforced by the validator.
+- The JSON Schema does not encode which operators go with which column. That precision lives in the
+  prompt text and is enforced by the validator.
 
 ## Testing
 
