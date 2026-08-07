@@ -1,6 +1,6 @@
 # Plan — Wider query support
 
-**Status:** Part A implemented. Part B is a proposal.
+**Status:** Part A and Part B step 0 implemented. The rest of Part B is a proposal.
 **Scope:** `PlanCompiler`, `CompilationContext`, `RelationDefinition`, and the validator's relation rules.
 **Related:** [architecture.md](architecture.md).
 
@@ -143,6 +143,11 @@ changelog line rather than a patch.
 ## Part B — Belongs-to-many and pivot tables
 
 ### Step 0 — Give every join an alias (prerequisite)
+
+**Implemented.** One thing the proposal below understated: aliasing changes the name a relation
+`alwaysScope` must use, so it is a breaking change for any schema whose relation scope hardcodes a
+table name. The closure now receives the alias as a third argument. Confirmed the bug was real
+before the fix — two paths to `products` failed with `ambiguous column name: products.name`.
 
 `CompilationContext::$tables` maps a relation path to a **table name**, and joins are added with no
 alias. That works only while every path in a plan reaches a different table. It already breaks
@@ -316,7 +321,7 @@ the README's note on limits.
 | Phase | Work | Why here |
 |---|---|---|
 | 1 | ~~Soft deletes on joins + `withTrashed()`~~ **done** | Self-contained, fixes wrong results, no contract change |
-| 2 | Alias every join | Bug fix on its own, and a hard prerequisite for phase 3 |
+| 2 | ~~Alias every join~~ **done** | Bug fix on its own, and a hard prerequisite for phase 3 |
 | 3 | `BelongsToMany` joins, `alwaysPivotScope`, reject `MorphToMany` | The main feature |
 | 4 | Pivot columns via a `pivot` node | Needs phase 3; the only piece that changes the contract |
 | 5 | Optional: `HasManyThrough`, then `MorphToMany` | Same machinery, no new concepts |

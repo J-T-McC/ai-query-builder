@@ -154,6 +154,40 @@ it. `--cost` reports what it weighs, broken down by plan property and by filter 
 php artisan ai-query:describe invoices --cost
 ```
 
+### Join aliases
+
+Every joined table is aliased to its relation path. `lines` is joined as `lines`, and
+`lines.product` as `lines__product`:
+
+```sql
+from "invoices"
+left join "invoice_lines" as "lines"          on "invoices"."id" = "lines"."invoice_id"
+left join "products"      as "lines__product" on "lines"."product_id" = "lines__product"."id"
+```
+
+Without this, two paths reaching the same table compile to two joins of that table and every
+column reference between them is ambiguous — `author.company.name` alongside
+`publisher.company.name` is a query the database refuses to run. Aliasing also lets a relation
+reach a table that is already the root.
+
+Every join is aliased, including the ones that would not collide. An alias that appeared only
+when it was needed would mean a relation scope worked until the day someone declared a second path
+to the same table.
+
+The root is **not** aliased, so a resource-level `alwaysScope` keeps naming the real table.
+
+A relation-level `alwaysScope` receives the alias as its third argument, and should qualify
+columns with it rather than with the table name:
+
+```php
+->relation('lines', fn (RelationDefinition $r) => $r
+    ->column('quantity', fn (ColumnDefinition $c) => $c->aggregatable(['sum']))
+    ->alwaysScope(fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join
+        ->where("{$alias}.quantity", '>', 0)))
+```
+
+Aliases are derived from the path alone, so the same plan always compiles to the same SQL.
+
 ### Soft deletes
 
 Deleted rows are excluded everywhere, not just on the root model.
@@ -163,9 +197,9 @@ join — so without help, a plan reading `lines.product.name` would read product
 ago. The compiler adds the condition itself, on the join's `ON` clause:
 
 ```sql
-left join "invoice_lines"
-       on "invoices"."id" = "invoice_lines"."invoice_id"
-      and "invoice_lines"."deleted_at" is null
+left join "invoice_lines" as "lines"
+       on "invoices"."id" = "lines"."invoice_id"
+      and "lines"."deleted_at" is null
 ```
 
 On the `ON` clause rather than in the `WHERE` clause, because the difference is visible: in the

@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use JTMcC\AiQueryBuilder\Exceptions\CompilationException;
+use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 use JTMcC\AiQueryBuilder\Tests\Fixtures\InvoiceSchema;
 use Workbench\App\Models\Invoice;
@@ -97,9 +100,9 @@ describe('joins', function () {
         ])->toSql();
 
         expect($sql)
-            ->toContain('left join "invoice_lines" on "invoices"."id" = "invoice_lines"."invoice_id"')
+            ->toContain('left join "invoice_lines" as "lines" on "invoices"."id" = "lines"."invoice_id"')
             // Products do not soft delete, so that join carries the key alone.
-            ->toContain('left join "products" on "invoice_lines"."product_id" = "products"."id"');
+            ->toContain('left join "products" as "lines__product" on "lines"."product_id" = "lines__product"."id"');
     });
 
     it('joins a parent relation before its child', function () {
@@ -112,14 +115,112 @@ describe('joins', function () {
     it('applies a relation scope as an on condition rather than a where', function () {
         $schema = InvoiceSchema::make();
         $schema->findRelation('lines.product')?->alwaysScope(
-            fn (JoinClause $join) => $join->where('products.type', '=', 'widget'),
+            fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join->where("{$alias}.type", '=', 'widget'),
         );
 
         $sql = compilePlan(['select' => [['column' => 'lines.product.name']]], $schema)->toSql();
 
         expect($sql)->toContain(
-            'left join "products" on "invoice_lines"."product_id" = "products"."id" and "products"."type" = ?',
+            'left join "products" as "lines__product" on "lines"."product_id" = "lines__product"."id" '.
+            'and "lines__product"."type" = ?',
         );
+    });
+});
+
+describe('join aliases', function () {
+    it('aliases every joined table to its relation path', function () {
+        $sql = compilePlan(['select' => [['column' => 'lines.product.name']]])->toSql();
+
+        expect($sql)->toContain('"invoice_lines" as "lines"')
+            ->toContain('"products" as "lines__product"');
+    });
+
+    it('leaves the root table unaliased so a mandatory scope still resolves', function () {
+        $sql = compilePlan(['select' => [['column' => 'lines.quantity']]], scopedSchema())->toSql();
+
+        expect($sql)->toContain('from "invoices" ')
+            ->toContain('"invoices"."tenant_id" = ?');
+    });
+
+    it('joins the same table twice under distinct aliases', function () {
+        // Two paths reaching `products`. Without aliases this compiles to two
+        // joins of the same table and the column references are ambiguous.
+        $schema = ResourceSchema::make()
+            ->for(InvoiceLine::class)
+            ->name('lines')
+            ->maxRelationDepth(3)
+            ->column('quantity')
+            ->relation('product', fn (RelationDefinition $r) => $r->column('name'))
+            ->relation('invoice', fn (RelationDefinition $i) => $i
+                ->relation('lines', fn (RelationDefinition $l) => $l
+                    ->relation('product', fn (RelationDefinition $p) => $p->column('name'))));
+
+        $sql = compilePlan([
+            'select' => [
+                ['column' => 'product.name', 'as' => 'mine'],
+                ['column' => 'invoice.lines.product.name', 'as' => 'sibling'],
+            ],
+        ], $schema)->toSql();
+
+        expect($sql)->toContain('"products" as "product"')
+            ->toContain('"products" as "invoice__lines__product"')
+            ->toContain('"product"."name" as "mine"')
+            ->toContain('"invoice__lines__product"."name" as "sibling"');
+    });
+
+    it('executes a query that joins the same table twice', function () {
+        $widget = Product::create(['name' => 'Widget', 'type' => 'widget']);
+        $service = Product::create(['name' => 'Support', 'type' => 'service']);
+
+        $invoice = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $line = InvoiceLine::create([
+            'invoice_id' => $invoice->id, 'product_id' => $widget->id, 'quantity' => 1,
+        ]);
+
+        InvoiceLine::create(['invoice_id' => $invoice->id, 'product_id' => $service->id, 'quantity' => 1]);
+
+        $schema = ResourceSchema::make()
+            ->for(InvoiceLine::class)
+            ->name('lines')
+            ->maxRelationDepth(3)
+            ->column('id', fn (ColumnDefinition $c) => $c->as('line_id')->filterable(['=']))
+            ->relation('product', fn (RelationDefinition $r) => $r->column('name'))
+            ->relation('invoice', fn (RelationDefinition $i) => $i
+                ->relation('lines', fn (RelationDefinition $l) => $l
+                    ->relation('product', fn (RelationDefinition $p) => $p->column('name'))));
+
+        $rows = compilePlan([
+            'select' => [
+                ['column' => 'product.name', 'as' => 'mine'],
+                ['column' => 'invoice.lines.product.name', 'as' => 'sibling'],
+            ],
+            'filters' => [
+                'operator' => 'and',
+                'conditions' => [['column' => 'line_id', 'operator' => '=', 'value' => $line->id]],
+            ],
+        ], $schema)->get();
+
+        // The line's own product on one side, every product on the invoice on
+        // the other. Reaching two different rows of one table is the point.
+        expect($rows->pluck('sibling', 'mine')->all())->toBe(['Widget' => 'Support']);
+    });
+
+    it('qualifies a relation scope with the alias when the same table is joined twice', function () {
+        $schema = ResourceSchema::make()
+            ->for(InvoiceLine::class)
+            ->name('lines')
+            ->column('quantity')
+            ->relation('product', fn (RelationDefinition $r) => $r
+                ->column('name')
+                ->alwaysScope(fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join
+                    ->where("{$alias}.type", '=', 'widget')));
+
+        $sql = compilePlan(['select' => [['column' => 'product.name']]], $schema)->toSql();
+
+        expect($sql)->toContain('and "product"."type" = ?');
     });
 });
 
@@ -128,8 +229,8 @@ describe('soft deletes on joins', function () {
         $sql = compilePlan(['select' => [['column' => 'lines.quantity']]])->toSql();
 
         expect($sql)->toContain(
-            'left join "invoice_lines" on "invoices"."id" = "invoice_lines"."invoice_id" '.
-            'and "invoice_lines"."archived_at" is null',
+            'left join "invoice_lines" as "lines" on "invoices"."id" = "lines"."invoice_id" '.
+            'and "lines"."archived_at" is null',
         );
     });
 
@@ -138,8 +239,8 @@ describe('soft deletes on joins', function () {
         // the default would still pass the test above on a conventional model.
         $sql = compilePlan(['select' => [['column' => 'lines.quantity']]])->toSql();
 
-        expect($sql)->toContain('"invoice_lines"."archived_at" is null')
-            ->and($sql)->not->toContain('"invoice_lines"."deleted_at"');
+        expect($sql)->toContain('"lines"."archived_at" is null')
+            ->and($sql)->not->toContain('"lines"."deleted_at"');
     });
 
     it('adds no condition for a relation whose model does not soft delete', function () {
@@ -148,7 +249,7 @@ describe('soft deletes on joins', function () {
         // The negative lookahead is the assertion: the products join carries the
         // key condition and nothing appended after it.
         expect($sql)->toMatch(
-            '/left join "products" on "invoice_lines"\."product_id" = "products"\."id"(?! and)/',
+            '/left join "products" as "lines__product" on "lines"\."product_id" = "lines__product"\."id"(?! and)/',
         );
     });
 
@@ -198,19 +299,20 @@ describe('soft deletes on joins', function () {
 
         $sql = compilePlan(['select' => [['column' => 'lines.quantity']]], $schema)->toSql();
 
-        expect($sql)->not->toContain('"invoice_lines"."archived_at" is null');
+        expect($sql)->not->toContain('"lines"."archived_at" is null');
     });
 
     it('applies both the soft delete condition and a relation scope to the same join', function () {
         $schema = InvoiceSchema::make();
         $schema->findRelation('lines')?->alwaysScope(
-            fn (JoinClause $join) => $join->where('invoice_lines.quantity', '>', 0),
+            fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join
+                ->where("{$alias}.quantity", '>', 0),
         );
 
         $sql = compilePlan(['select' => [['column' => 'lines.quantity']]], $schema)->toSql();
 
         expect($sql)->toContain(
-            'and "invoice_lines"."archived_at" is null and "invoice_lines"."quantity" > ?',
+            'and "lines"."archived_at" is null and "lines"."quantity" > ?',
         );
     });
 
@@ -229,7 +331,7 @@ describe('projection', function () {
             'select' => [['column' => 'lines.quantity', 'function' => 'sum']],
         ])->toSql();
 
-        expect($sql)->toContain('SUM("invoice_lines"."quantity") as "sum_lines_quantity"');
+        expect($sql)->toContain('SUM("lines"."quantity") as "sum_lines_quantity"');
     });
 
     it('compiles a date bucket into the select and the group by', function () {
@@ -299,7 +401,7 @@ describe('fan-out protection', function () {
             'group_by' => [['column' => 'lines.product.type']],
         ])->toSql();
 
-        expect($sql)->toContain('SUM("invoice_lines"."quantity")');
+        expect($sql)->toContain('SUM("lines"."quantity")');
     });
 
     it('allows aggregating a parent column when no to-many relation is joined', function () {
