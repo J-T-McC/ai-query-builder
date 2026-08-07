@@ -413,9 +413,90 @@ middleware is the only thing between this endpoint and the internet.
 ],
 ```
 
-`POST /ai-query/{resource}/query` with the plan as the JSON body. Returns rows, or 422 with
-structured errors. The resource comes from the URL, so a route protected for one resource cannot
-be used to query another. Compiled SQL is never returned to the client.
+`POST /ai-query/{resource}/query` with the plan as the JSON body:
+
+```json
+{
+  "select": [
+    { "column": "status" },
+    { "column": "total", "function": "sum", "as": "revenue" }
+  ],
+  "filters": {
+    "operator": "and",
+    "conditions": [{ "column": "issued_at", "operator": "within", "value": "last_30_days" }]
+  },
+  "group_by": [{ "column": "status" }],
+  "sort": [{ "column": "revenue", "direction": "desc" }]
+}
+```
+
+```json
+{
+  "resource": "invoices",
+  "columns": { "status": [], "revenue": { "unit": "currency:USD" } },
+  "rows": [{ "status": "paid", "revenue": 42.5 }],
+  "row_count": 1,
+  "truncated": false
+}
+```
+
+`columns` carries the metadata needed to narrate the rows correctly, keyed by result alias — a
+number without its unit is how a model ends up reporting cents as dollars. A column with no
+metadata to report is empty. `truncated` says whether the row cap was hit, so a capped result is
+never mistaken for a complete one.
+
+`422` with structured errors if the plan is rejected, `404` for an unknown resource — without
+listing the ones that do exist, so an unauthenticated probe cannot enumerate them. The resource
+comes from the URL and overrides any `resource` in the body, so a route protected for one resource
+cannot be used to query another. Compiled SQL is never returned; it would disclose table and column
+names to a client that only needs rows. Use `QueryRunner::explain()` server-side for that.
+
+#### A plan is a saved query, not a saved result
+
+This is the part worth knowing about. A plan is data, and running one is stateless — so a plan an
+agent wrote once can be stored and re-posted whenever you want the answer again. The expensive,
+non-deterministic step (a model turning a question into a plan) happens once; every run after that
+is a database query with no model involved.
+
+That makes a natural split. Generate with an agent, then keep the plan:
+
+```php
+$plan = $agent->generatePlan('revenue by status over the last 30 days');
+
+SavedQuery::create(['user_id' => $user->id, 'name' => 'Revenue by status', 'plan' => $plan]);
+```
+
+Re-run it from anywhere — a dashboard panel refreshing on an interval, a scheduled export, a
+"refresh" button — by posting the stored plan back:
+
+```js
+const res = await fetch(`/ai-query/invoices/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(savedQuery.plan),
+})
+```
+
+**Rolling date ranges are what make this a live query rather than a snapshot.** A stored plan
+holding `"within": "last_30_days"` is resolved at *validation* time, on every run — so the same
+stored bytes mean the thirty days ending today, not the thirty days that had ended when the agent
+wrote it. Store `{"operator": ">=", "value": "2026-07-07"}` instead and you have frozen a moment;
+store `within` and you have saved a question. See [Date ranges](#date-ranges).
+
+Three properties make stored plans safe to keep around:
+
+- **Re-validated on every run, never trusted because it ran before.** A plan is checked against the
+  schema each time. If you remove a column, revoke an operator, or lower a row cap, every stored
+  plan that relied on it starts failing with a structured error rather than continuing to work.
+- **Resolved against the caller, not the author.** Validation uses `$request->user()`, so a plan
+  shared between users is re-checked against each one's visibility. A column the current caller
+  cannot see comes back as `unknown_column` — the same answer they would get if it did not exist.
+- **Mandatory scopes apply on every run.** `alwaysScope` is not part of the plan and cannot be
+  expressed in one, so a stored plan cannot outlive or escape the tenancy it was created under.
+
+The stored plan is also readable and diffable, which an opaque saved query rarely is. Users can be
+shown what a saved query actually does, and you can grep your own storage for every plan that
+touches a column before you drop it.
 
 ## In practice
 
