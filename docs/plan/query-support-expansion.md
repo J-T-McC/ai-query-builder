@@ -1,6 +1,6 @@
 # Plan — Wider query support
 
-**Status:** Part A and Part B steps 0–2 implemented. Steps 3 and 4 are a proposal.
+**Status:** implemented. Step 4 (`HasManyThrough`, polymorphic support) remains open.
 **Scope:** `PlanCompiler`, `CompilationContext`, `RelationDefinition`, and the validator's relation rules.
 **Related:** [architecture.md](architecture.md).
 
@@ -255,6 +255,23 @@ link itself, which is where things like `revoked_at` and `is_primary` live.
 
 ### Step 3 — Pivot columns
 
+**Implemented as Option A.** Two things worth recording.
+
+The pivot is a `PivotDefinition`, not a `RelationDefinition`, because nothing is traversable
+through an intermediate table. That meant splitting `DefinesStructure` into `DeclaresColumns`
+(columns only, which a pivot needs) and `DefinesStructure` (columns plus relations and traversal).
+
+Types are not inferred on a pivot. `ColumnTypeResolver` reads casts off the Eloquent model a path
+resolves to, and an intermediate table usually has no model. It fails open, so an undeclared pivot
+column simply gets no type and no checking — declare it with `typed()`. Doing so is worth more than
+it looks: a declared `date` earns the column `within` and filter-value checking on the same terms
+as a root column.
+
+Measured cost on the fixture schema: one declared pivot column adds 124 bytes to the contract
+(prompt plus JSON Schema), of which the `pivot.` segment is 6. The disambiguation Option A buys
+costs roughly two tokens per pivot column.
+
+
 Reading `roles.name` works after step 1. Reading *when* the role was assigned does not, because
 `assigned_at` lives on the pivot table and the pivot table is not a node in the schema tree.
 
@@ -336,7 +353,7 @@ the README's note on limits.
 | 1 | ~~Soft deletes on joins + `withTrashed()`~~ **done** | Self-contained, fixes wrong results, no contract change |
 | 2 | ~~Alias every join~~ **done** | Bug fix on its own, and a hard prerequisite for phase 3 |
 | 3 | ~~`BelongsToMany` joins, `alwaysPivotScope`, reject `MorphToMany`~~ **done** | The main feature |
-| 4 | Pivot columns via a `pivot` node | Needs phase 3; the only piece that changes the contract |
+| 4 | ~~Pivot columns via a `pivot` node~~ **done** | Needs phase 3; the only piece that changes the contract |
 | 5 | Optional: `HasManyThrough`, then the polymorphic relations | Same machinery, no new concepts |
 
 Phases 1 and 2 are independent of each other and can ship in either order. Phase 4 is the only one

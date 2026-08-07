@@ -8,6 +8,7 @@ use Illuminate\Database\Query\JoinClause;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use JTMcC\AiQueryBuilder\Exceptions\CompilationException;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\PivotDefinition;
 use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 use JTMcC\AiQueryBuilder\Tests\Fixtures\InvoiceSchema;
@@ -501,6 +502,109 @@ describe('pivot scopes', function () {
         $sql = compilePlan(['select' => [['column' => 'lines.quantity']]], $schema)->toSql();
 
         expect($sql)->not->toContain('nonexistent');
+    });
+});
+
+describe('pivot columns', function () {
+    it('qualifies a pivot column against the pivot table', function () {
+        $sql = compilePlan(['select' => [['column' => 'tags.pivot.assigned_at']]])->toSql();
+
+        expect($sql)->toContain('"tags__pivot"."assigned_at" as "tags_pivot_assigned_at"');
+    });
+
+    it('joins the pivot for a plan that reads only a pivot column', function () {
+        // No column from `tags` itself, so the pivot alias has to be registered
+        // by the join pass rather than incidentally by another clause.
+        $sql = compilePlan(['select' => [['column' => 'tags.pivot.assigned_at']]])->toSql();
+
+        expect($sql)->toContain('"invoice_tag" as "tags__pivot"')
+            ->toContain('"tags" as "tags"');
+    });
+
+    it('does not treat the pivot segment as a relation to join', function () {
+        $sql = compilePlan(['select' => [['column' => 'tags.pivot.assigned_at']]])->toSql();
+
+        expect(substr_count($sql, '"invoice_tag"'))->toBe(1);
+    });
+
+    it('filters on a pivot column', function () {
+        $invoice = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $early = Tag::create(['name' => 'early']);
+        $late = Tag::create(['name' => 'late']);
+
+        $invoice->tags()->attach($early->id, ['assigned_at' => '2026-01-05']);
+        $invoice->tags()->attach($late->id, ['assigned_at' => '2026-06-05']);
+
+        $rows = compilePlan([
+            'select' => [['column' => 'tags.name', 'as' => 'tag']],
+            'filters' => [
+                'operator' => 'and',
+                'conditions' => [[
+                    'column' => 'tags.pivot.assigned_at',
+                    'operator' => 'between',
+                    'value' => ['2026-01-01', '2026-01-31'],
+                ]],
+            ],
+        ], scopedSchema())->get();
+
+        expect($rows->pluck('tag')->all())->toBe(['early']);
+    });
+
+    it('reads a pivot column and a related column in one plan', function () {
+        $invoice = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $tag = Tag::create(['name' => 'urgent']);
+        $invoice->tags()->attach($tag->id, ['assigned_at' => '2026-01-05']);
+
+        $rows = compilePlan([
+            'select' => [
+                ['column' => 'tags.name', 'as' => 'tag'],
+                ['column' => 'tags.pivot.assigned_at', 'as' => 'assigned'],
+            ],
+        ], scopedSchema())->get();
+
+        expect($rows->first()->tag)->toBe('urgent')
+            ->and($rows->first()->assigned)->toBe('2026-01-05');
+    });
+
+    it('keeps a pivot column distinct from a related column of the same name', function () {
+        // Both tables have a `name`. The pivot segment is what stops the two
+        // from competing for `tags.name`.
+        $schema = scopedSchema();
+        $schema->findRelation('tags')?->pivot(
+            fn (PivotDefinition $p) => $p->column('tag_id', fn (ColumnDefinition $c) => $c->as('name')),
+        );
+
+        $sql = compilePlan([
+            'select' => [
+                ['column' => 'tags.name', 'as' => 'related'],
+                ['column' => 'tags.pivot.name', 'as' => 'link'],
+            ],
+        ], $schema)->toSql();
+
+        expect($sql)->toContain('"tags"."name" as "related"')
+            ->toContain('"tags__pivot"."tag_id" as "link"');
+    });
+
+    it('allows aggregating a pivot column across the many-to-many', function () {
+        $schema = scopedSchema();
+        $schema->findRelation('tags')?->pivot(
+            fn (PivotDefinition $p) => $p->column('id', fn (ColumnDefinition $c) => $c
+                ->as('link_id')
+                ->aggregatable(['count'])),
+        );
+
+        $sql = compilePlan([
+            'select' => [['column' => 'tags.pivot.link_id', 'function' => 'count', 'as' => 'links']],
+        ], $schema)->toSql();
+
+        // The pivot sits on the to-many side, so this is not a fan-out risk.
+        expect($sql)->toContain('COUNT("tags__pivot"."id") as "links"');
     });
 });
 
