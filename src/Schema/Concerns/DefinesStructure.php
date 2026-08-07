@@ -58,6 +58,19 @@ trait DefinesStructure
     }
 
     /**
+     * The pivot node hanging off this one, if it can have one.
+     *
+     * Only a relation can, and RelationDefinition overrides this. Declaring it
+     * here rather than testing the node's type keeps path traversal free of a
+     * check that reads as redundant from inside RelationDefinition, where every
+     * node it walks is already one.
+     */
+    public function pivotDefinition(): ?PivotDefinition
+    {
+        return null;
+    }
+
+    /**
      * Resolve a dot-delimited path such as `lines.product.type` to its column.
      *
      * Returns null for any path that was not declared. Enforcing the relation
@@ -156,17 +169,9 @@ trait DefinesStructure
                 return null;
             }
 
-            if ($segment === PivotDefinition::SEGMENT) {
-                $node = $node instanceof RelationDefinition ? $node->pivotDefinition() : null;
-
-                if ($node === null) {
-                    return null;
-                }
-
-                continue;
-            }
-
-            $node = $node->relations()[$segment] ?? null;
+            $node = $segment === PivotDefinition::SEGMENT
+                ? $node->pivotDefinition()
+                : $node->relations()[$segment] ?? null;
 
             if ($node === null) {
                 return null;
