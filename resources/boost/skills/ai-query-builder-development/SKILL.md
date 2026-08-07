@@ -84,6 +84,11 @@ qualify columns with it, not with the table name:
     ->where("{$alias}.type", '=', 'widget'))
 ```
 
+`HasOne`, `HasMany`, `BelongsTo` and `BelongsToMany` can be traversed. A `belongsToMany` compiles
+to two joins (pivot, then related table), counts as one relation for `maxRelationDepth`, and always
+counts as to-many for fan-out. Constrain the link itself with `alwaysPivotScope()`, which lands on
+the pivot join. Pivot columns are not yet addressable. Polymorphic relations are refused.
+
 Soft deletes are the one exception: the compiler adds `deleted_at is null` to the join itself,
 reading the column from the model. Do not write that condition by hand. `RelationDefinition::withTrashed()`
 opts a relation out when the deleted rows are the point.

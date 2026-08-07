@@ -124,9 +124,22 @@ describe('prompt rendering', function () {
     });
 
     it('repeats capabilities per column when a legend would cost more than it saves', function () {
-        // Eight columns, barely any two alike: the legend is a fixed cost with
-        // almost nothing to amortise it over.
-        expect(contract()->toPrompt())
+        // Barely any two columns alike: the legend is a fixed cost with almost
+        // nothing to amortise it over. Built here rather than taken from the
+        // fixture, so adding a column there cannot silently flip the branch
+        // this test is asserting.
+        $schema = ResourceSchema::make()
+            ->for(Invoice::class)
+            ->name('invoices')
+            ->column('id', fn (ColumnDefinition $c) => $c->sortable())
+            ->column('issued_at', fn (ColumnDefinition $c) => $c->filterable(['>'])->groupableBy(['month']))
+            ->column('total', fn (ColumnDefinition $c) => $c->aggregatable(['sum'])->sortable())
+            ->column('status', fn (ColumnDefinition $c) => $c
+                ->enum(['draft', 'sent', 'paid', 'void'])
+                ->filterable(['=', 'in'])
+                ->groupable());
+
+        expect(SchemaContract::for($schema)->toPrompt())
             ->not->toContain('Unless a column lists its own')
             ->toContain('- status — one of: draft, sent, paid, void. select, filter(= in), group');
     });

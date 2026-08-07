@@ -24,6 +24,9 @@ final class RelationDefinition
     /** @var list<Closure> */
     private array $alwaysScopes = [];
 
+    /** @var list<Closure> */
+    private array $alwaysPivotScopes = [];
+
     private bool $withTrashed = false;
 
     public function __construct(private readonly string $name) {}
@@ -61,6 +64,31 @@ final class RelationDefinition
     public function alwaysScopes(): array
     {
         return $this->alwaysScopes;
+    }
+
+    /**
+     * A condition added to the pivot join of a many-to-many relation.
+     *
+     * Constrains the link rather than the row it points at, which is where
+     * attributes like `revoked_at` and `is_primary` live. Ignored by every
+     * other relation type, since they have no pivot join.
+     *
+     * The pivot is aliased to the relation path plus `__pivot`, so qualify
+     * columns with the third argument rather than the table name.
+     *
+     * @param  Closure(JoinClause, Authenticatable|null, string): mixed  $scope
+     */
+    public function alwaysPivotScope(Closure $scope): self
+    {
+        $this->alwaysPivotScopes[] = $scope;
+
+        return $this;
+    }
+
+    /** @return list<Closure> */
+    public function alwaysPivotScopes(): array
+    {
+        return $this->alwaysPivotScopes;
     }
 
     /**

@@ -23,7 +23,21 @@ class CompilationException extends RuntimeException
     {
         return new self(
             "The relation [{$path}] is a {$type}, which this package cannot join. ".
-            'Supported relations are HasOne, HasMany and BelongsTo.',
+            'Supported relations are HasOne, HasMany, BelongsTo and BelongsToMany.',
+        );
+    }
+
+    /**
+     * A polymorphic relation shares its table with other parent types, so a
+     * join that omits the morph type silently returns another type's rows.
+     * Refusing is safer than answering with them.
+     */
+    public static function unsupportedPolymorphicRelation(string $path, string $type): self
+    {
+        return new self(
+            "The relation [{$path}] is a {$type}. Joining a polymorphic relation without its ".
+            'type condition would match rows belonging to other parent types, so this package '.
+            'refuses rather than return them. Expose the related model as its own resource instead.',
         );
     }
 
