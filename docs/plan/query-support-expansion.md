@@ -1,6 +1,6 @@
 # Plan — Wider query support
 
-**Status:** implemented. Step 4 (`HasManyThrough`, polymorphic support) remains open.
+**Status:** implemented, including the optional step 5.
 **Scope:** `PlanCompiler`, `CompilationContext`, `RelationDefinition`, and the validator's relation rules.
 **Related:** [architecture.md](architecture.md).
 
@@ -311,14 +311,19 @@ one-line change, since `roles.pivot` is already its own key in the `tables` map.
 
 ### Step 4 — What to reject for now, and say so clearly
 
-- **`MorphToMany`** extends `BelongsToMany`, so it would slip through an `instanceof` check and
-  silently join rows of every morph type. Reject it explicitly. Supporting it later is small — add
-  `$join->where($morphType, $relation->getMorphClass())` to the pivot join — but a wrong-by-default
-  join is worse than an error.
-- **`HasManyThrough`** is the same two-join machinery with different key names. Natural next step
-  once the aliasing work is in, and no new concepts.
-- **`MorphTo`** cannot be joined at all — the target table is not knowable until the rows are read.
-  It should stay a compile error.
+**All now implemented except `MorphTo`, which stays refused.** What the proposal expected:
+
+- **`MorphToMany`** — supported, with `$join->where($morphType, $relation->getMorphClass())` on the
+  pivot join, exactly as sketched.
+- **`MorphOneOrMany`** — same condition, on the related join instead. This was the family the
+  proposal missed entirely; see step 1's note.
+- **`HasManyThrough`** — supported, and it was indeed the same two-join machinery. One thing worth
+  recording: `HasOneOrManyThrough` passes the *through* model to the base `Relation` constructor,
+  so `$relation->getParent()` returns the intermediate rather than the far parent. That is what
+  makes the intermediate's soft deletes reachable, and they matter — without them a line item
+  hanging off a deleted invoice is still reachable through the customer.
+- **`MorphTo`** — stays a compile error, and note it extends `BelongsTo`, so it was being joined
+  as one until this step added an explicit check ahead of that arm.
 
 `CompilationException::unsupportedRelation()` already names the supported list; update its message
 as each of these lands.
@@ -354,7 +359,7 @@ the README's note on limits.
 | 2 | ~~Alias every join~~ **done** | Bug fix on its own, and a hard prerequisite for phase 3 |
 | 3 | ~~`BelongsToMany` joins, `alwaysPivotScope`, reject `MorphToMany`~~ **done** | The main feature |
 | 4 | ~~Pivot columns via a `pivot` node~~ **done** | Needs phase 3; the only piece that changes the contract |
-| 5 | Optional: `HasManyThrough`, then the polymorphic relations | Same machinery, no new concepts |
+| 5 | ~~Optional: `HasManyThrough`, then the polymorphic relations~~ **done** | Same machinery, no new concepts |
 
 Phases 1 and 2 are independent of each other and can ship in either order. Phase 4 is the only one
 that changes what an agent sees, so it is the only one that needs a look at token cost and at the

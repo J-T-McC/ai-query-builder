@@ -3,8 +3,10 @@
 namespace Workbench\App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -31,17 +33,27 @@ class Invoice extends Model
     }
 
     /**
-     * A polymorphic many-to-many, backed by no table.
-     *
-     * It exists so a test can prove the compiler refuses to join one. Joining
-     * it without a morph type condition would match rows of every taggable
-     * type, so refusing is the only safe answer until that is implemented.
-     *
      * @return MorphToMany<Tag, $this>
      */
     public function morphTags(): MorphToMany
     {
         return $this->morphToMany(Tag::class, 'taggable');
+    }
+
+    /**
+     * @return MorphMany<Note, $this>
+     */
+    public function notes(): MorphMany
+    {
+        return $this->morphMany(Note::class, 'notable');
+    }
+
+    /**
+     * @return BelongsTo<Customer, $this>
+     */
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
     }
 
     /**
