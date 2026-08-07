@@ -44,7 +44,7 @@ describe('data dictionary', function () {
 
         expect($columns['total'])->toBe([
             'type' => 'number',
-            'unit' => 'currency:USD',
+            'unit' => 'currency:CAD',
             'selectable' => true,
             'sortable' => true,
             'filters' => ['>', '<', 'between'],
@@ -80,7 +80,7 @@ describe('prompt rendering', function () {
         $prompt = contract()->toPrompt();
 
         expect($prompt)->toContain('aggregate(sum avg min max)')
-            ->toContain('unit: currency:USD')
+            ->toContain('unit: currency:CAD')
             ->toContain('one of: widget, service')
             ->toContain('group by(day month year)');
     });

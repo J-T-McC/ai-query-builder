@@ -74,7 +74,7 @@ class InvoiceQuerySchema implements DefinesQuerySchema
                 ->sortable())
             ->column('total', fn (ColumnDefinition $c) => $c
                 ->describe('Invoice total')
-                ->measuredIn('currency:USD')
+                ->measuredIn('currency:CAD')
                 ->aggregatable(['sum', 'avg', 'min', 'max'])  // per-column function allow-list
                 ->filterable(['>', '<', 'between'])
                 ->sortable())

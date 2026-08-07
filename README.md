@@ -100,7 +100,7 @@ final class InvoiceQuerySchema implements DefinesQuerySchema
 
             ->column('total', fn (ColumnDefinition $c) => $c
                 ->describe('Invoice total, tax included')
-                ->measuredIn('currency:USD')
+                ->measuredIn('currency:CAD')
                 ->aggregatable(['sum', 'avg', 'min', 'max', 'count'])
                 ->filterable(['>', '<', 'between'])
                 ->sortable())
@@ -179,7 +179,7 @@ Register it:
 |---|---|
 | `as('alias')` | Expose the column under a different name |
 | `describe('…')` | A note the agent sees |
-| `measuredIn('currency:USD')` | A unit the agent sees, so it narrates numbers correctly |
+| `measuredIn('currency:CAD')` | A unit the agent sees, so it narrates numbers correctly |
 | `typed('date')` | The value type, when the model's casts don't say |
 | `enum([...])` | A closed set of permitted values |
 | `filterable([...])` | `=` `!=` `>` `>=` `<` `<=` `between` `in` `not_in` `like` `is_null` `is_not_null` |
@@ -618,7 +618,7 @@ middleware is the only thing between this endpoint and the internet.
 ```json
 {
   "resource": "invoices",
-  "columns": { "status": [], "revenue": { "unit": "currency:USD" } },
+  "columns": { "status": [], "revenue": { "unit": "currency:CAD" } },
   "rows": [{ "status": "paid", "revenue": 42.5 }],
   "row_count": 1,
   "truncated": false
