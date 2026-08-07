@@ -164,6 +164,23 @@ describe('prompt rendering', function () {
             ->and($prompt)->toContain('- total — select, aggregate(sum)');
     });
 
+    it('lists a pivot column under the pivot segment', function () {
+        expect(contract()->toPrompt())->toContain('tags.pivot.assigned_at');
+    });
+
+    it('keeps a pivot column distinct from the related table in the dictionary', function () {
+        expect(array_keys(contract()->columns()))
+            ->toContain('tags.name')
+            ->toContain('tags.pivot.assigned_at');
+    });
+
+    it('carries a declared pivot column type into the contract', function () {
+        // The pivot has no model to infer from, so the declared type is the
+        // only thing that can reach the agent.
+        expect(contract()->toJsonSchema())->not->toBeEmpty()
+            ->and(contract()->columns()['tags.pivot.assigned_at']->type()?->value)->toBe('date');
+    });
+
     it('does not double the full stop when a description ends in one', function () {
         $schema = ResourceSchema::make()
             ->for(Invoice::class)

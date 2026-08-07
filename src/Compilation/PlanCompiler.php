@@ -24,6 +24,7 @@ use JTMcC\AiQueryBuilder\Plan\QueryPlan;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
 use JTMcC\AiQueryBuilder\Schema\Enums\Aggregate;
 use JTMcC\AiQueryBuilder\Schema\Enums\Operator;
+use JTMcC\AiQueryBuilder\Schema\PivotDefinition;
 use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 
@@ -110,6 +111,14 @@ final class PlanCompiler
         foreach ($paths as $path) {
             $segments = explode('.', $path);
             $name = (string) array_pop($segments);
+
+            // A pivot is not a relation to follow. Its alias was registered when
+            // the many-to-many it belongs to was joined, which happened already
+            // because paths are walked shallowest first.
+            if ($name === PivotDefinition::SEGMENT) {
+                continue;
+            }
+
             $parent = $models[implode('.', $segments)];
 
             $relation = $parent->{$name}();
@@ -181,6 +190,12 @@ final class PlanCompiler
 
             $models[$path] = $relation->getRelated();
             $aliases[$path] = $alias;
+
+            // Register the pivot under its own path, so `tags.pivot.assigned_at`
+            // qualifies against the intermediate table rather than the related one.
+            if ($relation instanceof BelongsToMany) {
+                $aliases[$path.'.'.PivotDefinition::SEGMENT] = self::pivotAliasFor($alias);
+            }
 
             // A many-to-many always multiplies parent rows, so it needs no test
             // beyond its type. The fan-out guard reads this.

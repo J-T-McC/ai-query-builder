@@ -8,6 +8,7 @@ use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
 use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\PivotDefinition;
 use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 
@@ -19,33 +20,10 @@ use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
  */
 trait DefinesStructure
 {
-    /** @var array<string, ColumnDefinition> */
-    private array $columns = [];
+    use DeclaresColumns;
 
     /** @var array<string, RelationDefinition> */
     private array $relations = [];
-
-    /**
-     * Declare a column. Without a callback the column is selectable and nothing else.
-     *
-     * @param  (Closure(ColumnDefinition): mixed)|null  $configure
-     */
-    public function column(string $name, ?Closure $configure = null): static
-    {
-        $column = new ColumnDefinition($name);
-
-        if ($configure !== null) {
-            $configure($column);
-        }
-
-        if (isset($this->columns[$column->exposedName()])) {
-            throw SchemaDefinitionException::duplicateColumn($column->exposedName());
-        }
-
-        $this->columns[$column->exposedName()] = $column;
-
-        return $this;
-    }
 
     /**
      * Declare a traversable Eloquent relation.
@@ -54,6 +32,10 @@ trait DefinesStructure
      */
     public function relation(string $name, ?Closure $configure = null): static
     {
+        if ($name === PivotDefinition::SEGMENT) {
+            throw SchemaDefinitionException::reservedRelationName($name);
+        }
+
         if (isset($this->relations[$name])) {
             throw SchemaDefinitionException::duplicateRelation($name);
         }
@@ -67,12 +49,6 @@ trait DefinesStructure
         $this->relations[$name] = $relation;
 
         return $this;
-    }
-
-    /** @return array<string, ColumnDefinition> */
-    public function columns(): array
-    {
-        return $this->columns;
     }
 
     /** @return array<string, RelationDefinition> */
@@ -107,23 +83,17 @@ trait DefinesStructure
 
     /**
      * How many relations a path traverses. `total` is 0, `lines.product.type` is 2.
+     *
+     * The pivot segment does not count. It reaches the intermediate table of a
+     * relation already counted, so charging for it would make a many-to-many
+     * cost double what a has-many costs to reach the same distance.
      */
     public function depthOf(string $path): int
     {
-        return substr_count($path, '.');
-    }
+        $segments = explode('.', $path);
+        array_pop($segments);
 
-    /**
-     * Columns this user may see. Hidden columns never reach the agent's contract.
-     *
-     * @return array<string, ColumnDefinition>
-     */
-    public function visibleColumns(?Authenticatable $user): array
-    {
-        return array_filter(
-            $this->columns,
-            static fn (ColumnDefinition $column): bool => $column->isVisibleTo($user),
-        );
+        return count(array_filter($segments, static fn (string $s): bool => $s !== PivotDefinition::SEGMENT));
     }
 
     /**
@@ -155,6 +125,16 @@ trait DefinesStructure
 
         foreach ($this->relations as $name => $relation) {
             $columns = [...$columns, ...$relation->visibleColumnMap($user, $prefix.$name.'.')];
+
+            $pivot = $relation->pivotDefinition();
+
+            if ($pivot === null) {
+                continue;
+            }
+
+            foreach ($pivot->visibleColumns($user) as $pivotName => $pivotColumn) {
+                $columns[$prefix.$name.'.'.PivotDefinition::SEGMENT.'.'.$pivotName] = $pivotColumn;
+            }
         }
 
         return $columns;
@@ -165,11 +145,27 @@ trait DefinesStructure
      *
      * @param  list<string>  $segments
      */
-    private function traverse(array $segments): ResourceSchema|RelationDefinition|null
+    private function traverse(array $segments): ResourceSchema|RelationDefinition|PivotDefinition|null
     {
         $node = $this;
 
         foreach ($segments as $segment) {
+            // A pivot is the end of the line: it holds columns and nothing else,
+            // so any segment after it names something that cannot exist.
+            if ($node instanceof PivotDefinition) {
+                return null;
+            }
+
+            if ($segment === PivotDefinition::SEGMENT) {
+                $node = $node instanceof RelationDefinition ? $node->pivotDefinition() : null;
+
+                if ($node === null) {
+                    return null;
+                }
+
+                continue;
+            }
+
             $node = $node->relations()[$segment] ?? null;
 
             if ($node === null) {

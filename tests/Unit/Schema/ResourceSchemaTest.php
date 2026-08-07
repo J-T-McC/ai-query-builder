@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use JTMcC\AiQueryBuilder\Exceptions\SchemaDefinitionException;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\PivotDefinition;
 use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 use Workbench\App\Models\User;
@@ -163,4 +164,62 @@ it('filters columns by visibility for the given user', function () {
 
     expect(array_keys($schema->visibleColumns(null)))->toBe(['email'])
         ->and(array_keys($schema->visibleColumns(new User)))->toBe(['email', 'notes']);
+});
+
+describe('pivot columns', function () {
+    $schema = fn (): ResourceSchema => ResourceSchema::make()
+        ->for(User::class)
+        ->name('users')
+        ->relation('roles', fn (RelationDefinition $r) => $r
+            ->column('name')
+            ->pivot(fn (PivotDefinition $p) => $p->column('assigned_at')));
+
+    it('resolves a pivot column by its path', function () use ($schema) {
+        expect($schema()->findColumn('roles.pivot.assigned_at')?->name())->toBe('assigned_at');
+    });
+
+    it('lists a pivot column in the visible column map', function () use ($schema) {
+        expect($schema()->columnPaths(null))->toContain('roles.pivot.assigned_at');
+    });
+
+    it('does not charge the pivot segment against relation depth', function () use ($schema) {
+        // One relation is traversed to reach the link, not two. Charging for the
+        // pivot would make a many-to-many cost double a has-many to reach the
+        // same distance.
+        expect($schema()->depthOf('roles.pivot.assigned_at'))->toBe(1)
+            ->and($schema()->depthOf('roles.name'))->toBe(1);
+    });
+
+    it('resolves nothing past a pivot', function () use ($schema) {
+        expect($schema()->findColumn('roles.pivot.anything.deeper'))->toBeNull();
+    });
+
+    it('resolves nothing for a pivot on a relation that declares none', function () {
+        $schema = ResourceSchema::make()
+            ->for(User::class)
+            ->name('users')
+            ->relation('roles', fn (RelationDefinition $r) => $r->column('name'));
+
+        expect($schema->findColumn('roles.pivot.assigned_at'))->toBeNull();
+    });
+
+    it('does not report a pivot node as a relation', function () use ($schema) {
+        expect($schema()->findRelation('roles.pivot'))->toBeNull();
+    });
+
+    it('refuses a relation named pivot, which would make a path ambiguous', function () {
+        ResourceSchema::make()->for(User::class)->name('users')->relation('pivot');
+    })->throws(SchemaDefinitionException::class, 'reserved path segment');
+
+    it('merges repeated pivot declarations rather than replacing them', function () {
+        $schema = ResourceSchema::make()
+            ->for(User::class)
+            ->name('users')
+            ->relation('roles', fn (RelationDefinition $r) => $r
+                ->pivot(fn (PivotDefinition $p) => $p->column('assigned_at'))
+                ->pivot(fn (PivotDefinition $p) => $p->column('revoked_at')));
+
+        expect(array_keys($schema->relations()['roles']->pivotDefinition()?->columns() ?? []))
+            ->toBe(['assigned_at', 'revoked_at']);
+    });
 });

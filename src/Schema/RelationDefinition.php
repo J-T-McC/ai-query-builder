@@ -29,6 +29,8 @@ final class RelationDefinition
 
     private bool $withTrashed = false;
 
+    private ?PivotDefinition $pivot = null;
+
     public function __construct(private readonly string $name) {}
 
     public function describe(string $description): self
@@ -111,6 +113,29 @@ final class RelationDefinition
     public function includesTrashed(): bool
     {
         return $this->withTrashed;
+    }
+
+    /**
+     * Declare columns on the intermediate table of a many-to-many relation.
+     *
+     * Addressed under a `pivot` segment — `tags.pivot.assigned_at` — so a pivot
+     * column and a related column of the same name stay distinguishable.
+     *
+     * @param  Closure(PivotDefinition): mixed  $configure
+     */
+    public function pivot(Closure $configure): self
+    {
+        $configure($this->pivot ??= new PivotDefinition);
+
+        return $this;
+    }
+
+    /**
+     * The pivot node, or null when the relation declares no pivot columns.
+     */
+    public function pivotDefinition(): ?PivotDefinition
+    {
+        return $this->pivot;
     }
 
     public function name(): string
