@@ -43,7 +43,12 @@ final class RelationDefinition
      * the related model are NOT applied to a join, so anything that must hold
      * for joined rows belongs here.
      *
-     * @param  Closure(JoinClause, Authenticatable|null): mixed  $scope
+     * The joined table is aliased to its relation path, so qualify columns with
+     * the third argument rather than with the table name. `lines.product` is
+     * joined as `lines__product`, and `lines__product.type` is the only name
+     * that resolves.
+     *
+     * @param  Closure(JoinClause, Authenticatable|null, string): mixed  $scope
      */
     public function alwaysScope(Closure $scope): self
     {

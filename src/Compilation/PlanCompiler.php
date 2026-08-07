@@ -92,7 +92,9 @@ final class PlanCompiler
     ): CompilationContext {
         $root = $query->getModel();
 
-        $tables = ['' => $root->getTable()];
+        // The root is not aliased, so a mandatory scope on the resource keeps
+        // referring to the real table.
+        $aliases = ['' => $root->getTable()];
         $models = ['' => $root];
         $toMany = [];
 
@@ -112,14 +114,19 @@ final class PlanCompiler
                 throw CompilationException::unsupportedRelation($path, get_debug_type($relation));
             }
 
+            $parentAlias = $aliases[implode('.', $segments)];
+            $alias = self::aliasFor($path);
+
+            // Both sides are built from the alias rather than from the relation's
+            // qualified key names, which would name the real table.
             [$first, $second] = match (true) {
                 $relation instanceof BelongsTo => [
-                    $relation->getQualifiedForeignKeyName(),
-                    $relation->getQualifiedOwnerKeyName(),
+                    $parentAlias.'.'.$relation->getForeignKeyName(),
+                    $alias.'.'.$relation->getOwnerKeyName(),
                 ],
                 $relation instanceof HasOneOrMany => [
-                    $relation->getQualifiedParentKeyName(),
-                    $relation->getQualifiedForeignKeyName(),
+                    $parentAlias.'.'.$relation->getLocalKeyName(),
+                    $alias.'.'.$relation->getForeignKeyName(),
                 ],
                 default => throw CompilationException::unsupportedRelation($path, class_basename($relation)),
             };
@@ -131,16 +138,17 @@ final class PlanCompiler
             // soft-delete condition Eloquent would have added is applied here.
             $deletedAt = $definition?->includesTrashed() === true
                 ? null
-                : $this->deletedAtColumn($relation->getRelated());
+                : $this->deletedAtColumn($relation->getRelated(), $alias);
 
             // Left join, so a parent with no related rows is not dropped. The
             // relation's own scopes go on the ON clause rather than the WHERE
             // clause, which would silently make this an inner join.
-            $query->leftJoin($relation->getRelated()->getTable(), function (JoinClause $join) use (
+            $query->leftJoin($relation->getRelated()->getTable()." as {$alias}", function (JoinClause $join) use (
                 $first,
                 $second,
                 $deletedAt,
                 $scopes,
+                $alias,
                 $user,
             ): void {
                 $join->on($first, '=', $second);
@@ -150,12 +158,12 @@ final class PlanCompiler
                 }
 
                 foreach ($scopes as $scope) {
-                    $scope($join, $user);
+                    $scope($join, $user, $alias);
                 }
             });
 
             $models[$path] = $relation->getRelated();
-            $tables[$path] = $relation->getRelated()->getTable();
+            $aliases[$path] = $alias;
 
             if ($relation instanceof HasOneOrMany && ! $relation instanceof HasOne) {
                 $toMany[$path] = true;
@@ -171,7 +179,7 @@ final class PlanCompiler
         }
 
         return new CompilationContext(
-            tables: $tables,
+            tables: $aliases,
             toMany: $toMany,
             buckets: $buckets,
             driver: $query->getModel()->getConnection()->getDriverName(),
@@ -179,16 +187,30 @@ final class PlanCompiler
     }
 
     /**
-     * The qualified deleted-at column of a soft-deleting model, or null.
+     * The SQL alias for a joined relation path.
+     *
+     * Derived from the path, so the same plan always compiles to the same SQL.
+     * Every joined table is aliased, including the ones that would not collide,
+     * because an alias that appears only sometimes is worse than one that
+     * always does: a relation scope would work until the day another path
+     * reached the same table.
+     */
+    public static function aliasFor(string $path): string
+    {
+        return str_replace('.', '__', $path);
+    }
+
+    /**
+     * The deleted-at column of a soft-deleting model, qualified by its alias.
      *
      * Detected from the accessor the SoftDeletes trait adds rather than from
      * the trait itself, so a model that renames the column through DELETED_AT
      * is handled without a special case.
      */
-    private function deletedAtColumn(Model $model): ?string
+    private function deletedAtColumn(Model $model, string $alias): ?string
     {
-        return method_exists($model, 'getQualifiedDeletedAtColumn')
-            ? $model->getQualifiedDeletedAtColumn()
+        return method_exists($model, 'getDeletedAtColumn')
+            ? $alias.'.'.$model->getDeletedAtColumn()
             : null;
     }
 

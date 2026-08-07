@@ -13,7 +13,8 @@ use JTMcC\AiQueryBuilder\Schema\Enums\DateBucket;
 final readonly class CompilationContext
 {
     /**
-     * @param  array<string, string>  $tables  Relation path to table name, keyed '' for the root.
+     * @param  array<string, string>  $tables  Relation path to the alias its table was joined under,
+     *                                         keyed '' for the root, which is not aliased.
      * @param  array<string, true>  $toMany  Relation paths whose join multiplies parent rows.
      * @param  array<string, DateBucket>  $buckets  Column path to the granularity it is grouped at.
      */
@@ -28,7 +29,7 @@ final readonly class CompilationContext
      * Build a qualified identifier from the schema, never from the plan's strings.
      *
      * The path's last segment is the name exposed to the agent; the real column
-     * name comes from the definition, so an alias can never reach SQL.
+     * name comes from the definition, so an exposed name can never reach SQL.
      */
     public function qualify(string $path, ColumnDefinition $column): string
     {

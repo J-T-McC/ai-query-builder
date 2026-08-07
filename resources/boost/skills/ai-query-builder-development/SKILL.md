@@ -75,6 +75,15 @@ Relations are declared with `relation()` and traversed by dotted path (`lines.pr
 `RelationDefinition::alwaysScope()` adds an `ON` condition — needed because Eloquent global
 scopes are **not** applied to joined models.
 
+Every joined table is aliased to its relation path (`lines.product` joins as `lines__product`);
+the root table is not aliased. A relation scope receives that alias as its third argument and must
+qualify columns with it, not with the table name:
+
+```php
+->alwaysScope(fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join
+    ->where("{$alias}.type", '=', 'widget'))
+```
+
 Soft deletes are the one exception: the compiler adds `deleted_at is null` to the join itself,
 reading the column from the model. Do not write that condition by hand. `RelationDefinition::withTrashed()`
 opts a relation out when the deleted rows are the point.
@@ -176,6 +185,8 @@ Key behaviours to rely on:
   because the result would be silently inflated; aggregate on the joined side instead
 - do not rely on Eloquent global scopes for joined models; use `RelationDefinition::alwaysScope()`.
   Soft deletes are handled for you, so an `alwaysScope` restating `deleted_at is null` is redundant
+- do not hardcode a table name inside a relation `alwaysScope`; the table is aliased to the
+  relation path, so use the closure's `$alias` argument
 - do not feed query results back into a prompt as trusted input
 - do not optimise the tool payload before enabling prompt caching. The payload is byte-identical
   between requests and sits at the front of the prefix, so a warm cache bills it at roughly a
