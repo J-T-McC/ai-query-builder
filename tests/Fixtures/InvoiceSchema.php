@@ -6,6 +6,7 @@ namespace JTMcC\AiQueryBuilder\Tests\Fixtures;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
+use JTMcC\AiQueryBuilder\Schema\PivotDefinition;
 use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 use Workbench\App\Models\Invoice;
@@ -46,7 +47,14 @@ final class InvoiceSchema
                 ->column('name', fn (ColumnDefinition $c) => $c
                     ->filterable(['=', 'in'])
                     ->groupable()
-                    ->sortable()))
+                    ->sortable())
+                // The pivot has no model to read casts from, so the date is
+                // declared rather than inferred.
+                ->pivot(fn (PivotDefinition $p) => $p
+                    ->column('assigned_at', fn (ColumnDefinition $c) => $c
+                        ->typed('date')
+                        ->filterable(['=', 'between'])
+                        ->sortable())))
             ->relation('lines', fn (RelationDefinition $r) => $r
                 ->describe('Line items on the invoice')
                 ->column('quantity', fn (ColumnDefinition $c) => $c->aggregatable(['sum']))

@@ -64,6 +64,9 @@ A declared column is selectable and nothing else. Each capability is opt-in, on
 - `sortable()`, `selectable(false)`
 - `visibleWhen(Closure)` — hide the column from this user entirely
 
+On `RelationDefinition`: `describe()`, `column()`, `relation()`, `alwaysScope()`,
+`alwaysPivotScope()`, `withTrashed()`, `pivot()`.
+
 On `ResourceSchema`: `for()`, `name()`, `describe()`, `column()`, `relation()`, `alwaysScope()`,
 `defaultLimit()`, `maxLimit()`, `maxRelationDepth()`, `maxFilterDepth()`,
 `maxFilterNodes()`.
@@ -87,7 +90,19 @@ qualify columns with it, not with the table name:
 `HasOne`, `HasMany`, `BelongsTo` and `BelongsToMany` can be traversed. A `belongsToMany` compiles
 to two joins (pivot, then related table), counts as one relation for `maxRelationDepth`, and always
 counts as to-many for fan-out. Constrain the link itself with `alwaysPivotScope()`, which lands on
-the pivot join. Pivot columns are not yet addressable. Polymorphic relations are refused.
+the pivot join. Polymorphic relations are refused.
+
+Pivot columns are declared with `pivot()` and addressed under a reserved `pivot` segment
+(`tags.pivot.assigned_at`), which keeps them distinct from a related column of the same name. The
+segment does not count against `maxRelationDepth`. Types are not inferred on a pivot — declare
+them with `typed()`, which also earns a date column `within` and filter-value checking:
+
+```php
+->relation('tags', fn (RelationDefinition $t) => $t
+    ->column('name')
+    ->pivot(fn (PivotDefinition $p) => $p
+        ->column('assigned_at', fn (ColumnDefinition $c) => $c->typed('date')->filterable(['between']))))
+```
 
 Soft deletes are the one exception: the compiler adds `deleted_at is null` to the join itself,
 reading the column from the model. Do not write that condition by hand. `RelationDefinition::withTrashed()`

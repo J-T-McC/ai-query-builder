@@ -223,13 +223,50 @@ use `alwaysPivotScope`. It lands on the pivot join, where `alwaysScope` lands on
     ->column('name'))
 ```
 
-Pivot **columns** are not yet reachable — `tags.name` works, the pivot's own `assigned_at` does
-not.
-
 Polymorphic relations (`morphToMany`, `morphMany`, `morphOne`) are refused with an error. Joining
 one without its type condition would match rows belonging to every other parent type sharing that
 table, and returning another model's rows is worse than declining the query. Expose the related
 model as its own resource instead.
+
+#### Pivot columns
+
+Attributes of the link itself — when a tag was assigned, who assigned it — live on the
+intermediate table. Declare them under `pivot()`:
+
+```php
+->relation('tags', fn (RelationDefinition $t) => $t
+    ->column('name', fn (ColumnDefinition $c) => $c->filterable(['=', 'in']))
+    ->pivot(fn (PivotDefinition $p) => $p
+        ->column('assigned_at', fn (ColumnDefinition $c) => $c
+            ->typed('date')
+            ->filterable(['=', 'between']))))
+```
+
+An agent addresses them under a reserved `pivot` segment:
+
+```
+tags.name                 → the tag
+tags.pivot.assigned_at    → the link to it
+```
+
+The extra segment is the point. Fold pivot columns in beside the related table's and a pivot
+`name` and a tag `name` compete for `tags.name`, with declaration order silently deciding which
+one an agent gets. A path should mean exactly one thing.
+
+`pivot` is therefore reserved: declaring a relation by that name raises at schema-definition time.
+
+The pivot segment does **not** count against `maxRelationDepth`. It reaches the intermediate table
+of a relation already counted, and charging for it would make a many-to-many cost twice what a
+has-many costs to reach the same distance.
+
+**Types are not inferred on a pivot.** Everywhere else the package reads the type off the
+Eloquent model's casts; the intermediate table usually has no model to read. Declare it with
+`typed()` — and it is worth doing, because a pivot date that declares itself gets `within` and
+filter-value checking for free, exactly as a root column would.
+
+Cost, measured on the README's own schema: one declared pivot column adds **124 bytes** to the
+contract (prompt plus JSON Schema), of which the `pivot.` segment is 6. Two extra tokens per pivot
+column is the whole price of the disambiguation.
 
 ### Soft deletes
 
@@ -682,9 +719,9 @@ invalid plan before deciding whether retries are worth the tokens.
 - **Fan-out aggregates are refused.** Aggregating an invoice column while joining to its lines
   would count each invoice once per line and return a plausible, inflated number, so the compiler
   rejects it. Aggregate a column on the joined side instead.
-- Pivot columns are not reachable. A `belongsToMany` can be traversed to the related table, but
-  the intermediate table's own columns are not yet addressable by a plan.
 - Polymorphic relations are rejected rather than compiled into something subtly wrong.
+- Pivot column types are not inferred, because the intermediate table usually has no model to
+  infer from. Declare them with `typed()`.
 - Statement timeouts require pgsql, mysql or mariadb. On other drivers a non-null timeout raises
   rather than being silently ignored.
 - No unions, no pagination, no cross-resource joins yet.

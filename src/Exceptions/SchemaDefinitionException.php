@@ -37,6 +37,18 @@ class SchemaDefinitionException extends InvalidArgumentException
         return new self("A relation named [{$name}] is already declared on this schema.");
     }
 
+    /**
+     * `pivot` addresses the intermediate table of a many-to-many. Allowing it as
+     * a relation name would make `tags.pivot.x` mean two different things.
+     */
+    public static function reservedRelationName(string $name): self
+    {
+        return new self(
+            "[{$name}] is a reserved path segment and cannot be used as a relation name. ".
+            'It addresses the intermediate table of a many-to-many relation.',
+        );
+    }
+
     public static function notAnEloquentModel(string $class): self
     {
         return new self("The class [{$class}] is not an Eloquent model.");

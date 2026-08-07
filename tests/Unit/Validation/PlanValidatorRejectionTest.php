@@ -183,6 +183,31 @@ it('rejects a path traversing more relations than the schema permits', function 
     $this->fail('The plan should have been rejected.');
 });
 
+it('rejects an undeclared pivot column', function () {
+    $errors = rejectPlan(['select' => [['column' => 'tags.pivot.undeclared']]]);
+
+    expect($errors['select.0.column']->code)->toBe(ValidationCode::UnknownColumn);
+});
+
+it('rejects a path continuing past a pivot', function () {
+    $errors = rejectPlan(['select' => [['column' => 'tags.pivot.assigned_at.deeper']]]);
+
+    expect($errors['select.0.column']->code)->toBe(ValidationCode::UnknownColumn);
+});
+
+it('does not charge the pivot segment against the relation depth limit', function () {
+    // `tags.pivot.assigned_at` has two dots before the column but traverses one
+    // relation, so a limit of 1 must still admit it.
+    $schema = InvoiceSchema::make()->maxRelationDepth(1);
+
+    $plan = (new PlanValidator)->validate(
+        ['select' => [['column' => 'tags.pivot.assigned_at']]],
+        $schema,
+    );
+
+    expect($plan->select[0]->path)->toBe('tags.pivot.assigned_at');
+});
+
 describe('value shapes', function () use ($select) {
     $filter = fn (array $condition): array => [
         'select' => $select,
