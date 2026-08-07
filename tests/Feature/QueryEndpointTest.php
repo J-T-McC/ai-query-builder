@@ -66,7 +66,7 @@ it('runs a plan posted as json', function () {
         ->assertOk()
         ->assertJsonPath('row_count', 1)
         ->assertJsonPath('rows.0.invoice_id', $invoice->id)
-        ->assertJsonPath('columns.total.unit', 'currency:USD');
+        ->assertJsonPath('columns.total.unit', 'currency:CAD');
 });
 
 it('applies mandatory scopes the caller cannot influence', function () {

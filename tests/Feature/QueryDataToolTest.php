@@ -161,7 +161,7 @@ describe('handle', function () {
         ])), true);
 
         expect($result['row_count'])->toBe(1)
-            ->and($result['columns']['total'])->toBe(['unit' => 'currency:USD']);
+            ->and($result['columns']['total'])->toBe(['unit' => 'currency:CAD']);
     });
 
     it('sets the resource the model was never asked for', function () {

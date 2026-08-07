@@ -54,7 +54,7 @@ describe('running', function () use ($plan) {
     it('carries unit metadata so a model narrates the number correctly', function () use ($plan) {
         invoice();
 
-        expect(runner()->run($plan)->columns['total'])->toBe(['unit' => 'currency:USD']);
+        expect(runner()->run($plan)->columns['total'])->toBe(['unit' => 'currency:CAD']);
     });
 
     it('serialises to json without leaking timing data', function () use ($plan) {

@@ -29,7 +29,7 @@ final class InvoiceSchema
                 ->groupableBy(['day', 'month', 'year'])
                 ->sortable())
             ->column('total', fn (ColumnDefinition $c) => $c
-                ->measuredIn('currency:USD')
+                ->measuredIn('currency:CAD')
                 ->aggregatable(['sum', 'avg', 'min', 'max'])
                 ->filterable(['>', '<', 'between'])
                 ->sortable())

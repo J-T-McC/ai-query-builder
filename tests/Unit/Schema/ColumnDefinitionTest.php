@@ -91,11 +91,11 @@ it('deduplicates repeated operators', function () {
 it('records enum values and unit metadata', function () {
     $column = (new ColumnDefinition('status'))
         ->enum(['draft', 'paid'])
-        ->measuredIn('currency:USD')
+        ->measuredIn('currency:CAD')
         ->describe('Invoice status');
 
     expect($column->enumValues())->toBe(['draft', 'paid'])
-        ->and($column->unit())->toBe('currency:USD')
+        ->and($column->unit())->toBe('currency:CAD')
         ->and($column->description())->toBe('Invoice status');
 });
 

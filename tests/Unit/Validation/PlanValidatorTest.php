@@ -46,7 +46,7 @@ it('carries the resolved column definition on every clause', function () {
     $plan = validatePlan(['select' => [['column' => 'total', 'function' => 'sum']]]);
 
     expect($plan->select[0]->column->name())->toBe('total')
-        ->and($plan->select[0]->column->unit())->toBe('currency:USD');
+        ->and($plan->select[0]->column->unit())->toBe('currency:CAD');
 });
 
 it('derives aliases when none are given', function () {
