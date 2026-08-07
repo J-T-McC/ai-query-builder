@@ -8,8 +8,11 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
+use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Grammar;
 use Illuminate\Database\Query\JoinClause;
@@ -21,6 +24,7 @@ use JTMcC\AiQueryBuilder\Plan\QueryPlan;
 use JTMcC\AiQueryBuilder\Schema\ColumnDefinition;
 use JTMcC\AiQueryBuilder\Schema\Enums\Aggregate;
 use JTMcC\AiQueryBuilder\Schema\Enums\Operator;
+use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 
 /**
@@ -114,8 +118,16 @@ final class PlanCompiler
                 throw CompilationException::unsupportedRelation($path, get_debug_type($relation));
             }
 
+            // A polymorphic relation needs its morph type on the join, or it
+            // matches rows belonging to every other type that shares the table.
+            // Until that is implemented, refusing is the only safe answer.
+            if ($relation instanceof MorphToMany || $relation instanceof MorphOneOrMany) {
+                throw CompilationException::unsupportedPolymorphicRelation($path, class_basename($relation));
+            }
+
             $parentAlias = $aliases[implode('.', $segments)];
             $alias = self::aliasFor($path);
+            $definition = $schema->findRelation($path);
 
             // Both sides are built from the alias rather than from the relation's
             // qualified key names, which would name the real table.
@@ -128,10 +140,15 @@ final class PlanCompiler
                     $parentAlias.'.'.$relation->getLocalKeyName(),
                     $alias.'.'.$relation->getForeignKeyName(),
                 ],
+                // Two joins, not one: the pivot is joined first and the related
+                // table hangs off it, so the condition below starts at the pivot.
+                $relation instanceof BelongsToMany => [
+                    $this->joinPivot($query, $relation, $parentAlias, $alias, $definition, $user),
+                    $alias.'.'.$relation->getRelatedKeyName(),
+                ],
                 default => throw CompilationException::unsupportedRelation($path, class_basename($relation)),
             };
 
-            $definition = $schema->findRelation($path);
             $scopes = $definition?->alwaysScopes() ?? [];
 
             // A join runs none of the related model's global scopes, so the
@@ -165,7 +182,10 @@ final class PlanCompiler
             $models[$path] = $relation->getRelated();
             $aliases[$path] = $alias;
 
-            if ($relation instanceof HasOneOrMany && ! $relation instanceof HasOne) {
+            // A many-to-many always multiplies parent rows, so it needs no test
+            // beyond its type. The fan-out guard reads this.
+            if ($relation instanceof BelongsToMany
+                || ($relation instanceof HasOneOrMany && ! $relation instanceof HasOne)) {
                 $toMany[$path] = true;
             }
         }
@@ -184,6 +204,56 @@ final class PlanCompiler
             buckets: $buckets,
             driver: $query->getModel()->getConnection()->getDriverName(),
         );
+    }
+
+    /**
+     * Join the intermediate table of a many-to-many, and return the pivot side
+     * of the condition that will join the related table to it.
+     *
+     * @param  Builder<Model>  $query
+     * @param  BelongsToMany<Model, Model>  $relation
+     */
+    private function joinPivot(
+        Builder $query,
+        BelongsToMany $relation,
+        string $parentAlias,
+        string $alias,
+        ?RelationDefinition $definition,
+        ?Authenticatable $user,
+    ): string {
+        $pivotAlias = self::pivotAliasFor($alias);
+        $scopes = $definition?->alwaysPivotScopes() ?? [];
+
+        $query->leftJoin($relation->getTable()." as {$pivotAlias}", function (JoinClause $join) use (
+            $relation,
+            $parentAlias,
+            $pivotAlias,
+            $scopes,
+            $user,
+        ): void {
+            $join->on(
+                $parentAlias.'.'.$relation->getParentKeyName(),
+                '=',
+                $pivotAlias.'.'.$relation->getForeignPivotKeyName(),
+            );
+
+            foreach ($scopes as $scope) {
+                $scope($join, $user, $pivotAlias);
+            }
+        });
+
+        return $pivotAlias.'.'.$relation->getRelatedPivotKeyName();
+    }
+
+    /**
+     * The SQL alias for the pivot table of a many-to-many relation.
+     *
+     * Suffixed rather than derived from the path on its own, so it cannot
+     * collide with the alias of a relation declared alongside it.
+     */
+    public static function pivotAliasFor(string $alias): string
+    {
+        return $alias.'__pivot';
     }
 
     /**

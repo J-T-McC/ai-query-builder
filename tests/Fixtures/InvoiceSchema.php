@@ -41,6 +41,12 @@ final class InvoiceSchema
                 ->selectable(false))
             ->column('customer_notes', fn (ColumnDefinition $c) => $c
                 ->visibleWhen(fn (?Authenticatable $user): bool => $user !== null))
+            ->relation('tags', fn (RelationDefinition $t) => $t
+                ->describe('Tags applied to the invoice')
+                ->column('name', fn (ColumnDefinition $c) => $c
+                    ->filterable(['=', 'in'])
+                    ->groupable()
+                    ->sortable()))
             ->relation('lines', fn (RelationDefinition $r) => $r
                 ->describe('Line items on the invoice')
                 ->column('quantity', fn (ColumnDefinition $c) => $c->aggregatable(['sum']))
