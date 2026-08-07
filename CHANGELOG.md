@@ -1,7 +1,5 @@
 # Release Notes
 
-## [Unreleased](https://github.com/j-t-mcc/ai-query-builder/compare/v0.2.0...HEAD)
-
 ## [v0.2.0](https://github.com/j-t-mcc/ai-query-builder/compare/v0.1.1...v0.2.0) - 2026-08-07
 
 **Two things: what a plan is allowed to say, and what it costs to say it.**
