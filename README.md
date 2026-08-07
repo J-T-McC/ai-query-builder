@@ -188,6 +188,49 @@ columns with it rather than with the table name:
 
 Aliases are derived from the path alone, so the same plan always compiles to the same SQL.
 
+### Many-to-many relations
+
+A `belongsToMany` is declared like any other relation, and traversed the same way:
+
+```php
+->relation('tags', fn (RelationDefinition $t) => $t
+    ->column('name', fn (ColumnDefinition $c) => $c->filterable(['=', 'in'])->groupable()))
+```
+
+It compiles to two joins — the pivot, then the related table hanging off it:
+
+```sql
+left join "invoice_tag" as "tags__pivot" on "invoices"."id" = "tags__pivot"."invoice_id"
+left join "tags"        as "tags"        on "tags__pivot"."tag_id" = "tags"."id"
+                                        and "tags"."deleted_at" is null
+```
+
+A many-to-many always multiplies parent rows, so it counts as a to-many join for
+[fan-out protection](#known-limits): `sum(total)` while joining `tags` is refused, because it
+would add each invoice once per tag it carries.
+
+It counts as **one** relation against `maxRelationDepth`, not two. Depth measures how far an agent
+can reach, not how many joins the compiler writes. Worth knowing when tuning the limit: two
+many-to-many hops is six joins at depth 2.
+
+To constrain the link itself rather than the row it points at — a `revoked_at`, an `is_primary` —
+use `alwaysPivotScope`. It lands on the pivot join, where `alwaysScope` lands on the related one:
+
+```php
+->relation('tags', fn (RelationDefinition $t) => $t
+    ->alwaysPivotScope(fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join
+        ->whereNull("{$alias}.revoked_at"))
+    ->column('name'))
+```
+
+Pivot **columns** are not yet reachable — `tags.name` works, the pivot's own `assigned_at` does
+not.
+
+Polymorphic relations (`morphToMany`, `morphMany`, `morphOne`) are refused with an error. Joining
+one without its type condition would match rows belonging to every other parent type sharing that
+table, and returning another model's rows is worse than declining the query. Expose the related
+model as its own resource instead.
+
 ### Soft deletes
 
 Deleted rows are excluded everywhere, not just on the root model.
@@ -619,6 +662,8 @@ invalid plan before deciding whether retries are worth the tokens.
   See [Filter values](#filter-values).
 - Soft-deleted rows are excluded from joined relations, not just from the root model.
   See [Soft deletes](#soft-deletes).
+- A polymorphic relation is refused rather than joined without its type condition, which would
+  return rows belonging to another model entirely.
 - Truncated results are flagged rather than passed off as complete.
 
 **It does not:**
@@ -637,8 +682,9 @@ invalid plan before deciding whether retries are worth the tokens.
 - **Fan-out aggregates are refused.** Aggregating an invoice column while joining to its lines
   would count each invoice once per line and return a plausible, inflated number, so the compiler
   rejects it. Aggregate a column on the joined side instead.
-- `BelongsToMany` traversal is not supported, and is rejected rather than compiled into something
-  subtly wrong.
+- Pivot columns are not reachable. A `belongsToMany` can be traversed to the related table, but
+  the intermediate table's own columns are not yet addressable by a plan.
+- Polymorphic relations are rejected rather than compiled into something subtly wrong.
 - Statement timeouts require pgsql, mysql or mariadb. On other drivers a non-null timeout raises
   rather than being silently ignored.
 - No unions, no pagination, no cross-resource joins yet.

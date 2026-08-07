@@ -1,6 +1,6 @@
 # Plan — Wider query support
 
-**Status:** Part A and Part B step 0 implemented. The rest of Part B is a proposal.
+**Status:** Part A and Part B steps 0–2 implemented. Steps 3 and 4 are a proposal.
 **Scope:** `PlanCompiler`, `CompilationContext`, `RelationDefinition`, and the validator's relation rules.
 **Related:** [architecture.md](architecture.md).
 
@@ -189,6 +189,19 @@ own: two relations to the same table, and a self-referencing relation such as
 
 ### Step 1 — Join through the pivot
 
+**Implemented**, along with step 2's `alwaysPivotScope`, exactly as described.
+
+One thing this proposal got wrong. It planned to reject `MorphToMany` because it extends
+`BelongsToMany` and would otherwise slip through an `instanceof` check. True — but the same trap
+was **already sprung** on the other side: `MorphOneOrMany extends HasOneOrMany`, so a declared
+`morphMany` or `morphOne` was being joined *today*, without its `*_type` condition, silently
+matching rows of every parent type sharing that table. That is the exact failure this plan called
+"worse than an error", and it was already live.
+
+Both families are now refused through `CompilationException::unsupportedPolymorphicRelation()`.
+Supporting them properly stays a follow-up: the condition is one `where` on the morph type, but it
+wants its own polymorphic fixtures to test against rather than being bolted onto this change.
+
 A `BelongsToMany` is two joins, not one. Everything needed is on the relation object:
 
 ```php
@@ -322,9 +335,9 @@ the README's note on limits.
 |---|---|---|
 | 1 | ~~Soft deletes on joins + `withTrashed()`~~ **done** | Self-contained, fixes wrong results, no contract change |
 | 2 | ~~Alias every join~~ **done** | Bug fix on its own, and a hard prerequisite for phase 3 |
-| 3 | `BelongsToMany` joins, `alwaysPivotScope`, reject `MorphToMany` | The main feature |
+| 3 | ~~`BelongsToMany` joins, `alwaysPivotScope`, reject `MorphToMany`~~ **done** | The main feature |
 | 4 | Pivot columns via a `pivot` node | Needs phase 3; the only piece that changes the contract |
-| 5 | Optional: `HasManyThrough`, then `MorphToMany` | Same machinery, no new concepts |
+| 5 | Optional: `HasManyThrough`, then the polymorphic relations | Same machinery, no new concepts |
 
 Phases 1 and 2 are independent of each other and can ship in either order. Phase 4 is the only one
 that changes what an agent sees, so it is the only one that needs a look at token cost and at the

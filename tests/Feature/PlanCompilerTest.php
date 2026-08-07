@@ -14,6 +14,7 @@ use JTMcC\AiQueryBuilder\Tests\Fixtures\InvoiceSchema;
 use Workbench\App\Models\Invoice;
 use Workbench\App\Models\InvoiceLine;
 use Workbench\App\Models\Product;
+use Workbench\App\Models\Tag;
 
 uses(RefreshDatabase::class);
 
@@ -24,6 +25,21 @@ function scopedSchema(): ResourceSchema
 {
     return InvoiceSchema::make()
         ->alwaysScope(fn (Builder $query) => $query->where('invoices.tenant_id', 1));
+}
+
+/**
+ * The scoped schema with a countable key on the far side of the pivot.
+ *
+ * Declared here rather than in the fixture so the shared contract tests are
+ * not asked to absorb a capability only the many-to-many tests need.
+ */
+function taggedSchema(): ResourceSchema
+{
+    $schema = scopedSchema();
+
+    $schema->findRelation('tags')?->column('id', fn (ColumnDefinition $c) => $c->aggregatable(['count']));
+
+    return $schema;
 }
 
 describe('mandatory scopes', function () {
@@ -322,6 +338,186 @@ describe('soft deletes on joins', function () {
         // The root's exclusion comes from the model's global scope, in the
         // WHERE clause. The join pass must not restate it.
         expect(substr_count($sql, '"invoices"."deleted_at" is null'))->toBe(1);
+    });
+});
+
+describe('many-to-many', function () {
+    it('joins through the pivot table', function () {
+        $sql = compilePlan(['select' => [['column' => 'tags.name']]])->toSql();
+
+        expect($sql)
+            ->toContain('left join "invoice_tag" as "tags__pivot" on "invoices"."id" = "tags__pivot"."invoice_id"')
+            ->toContain('left join "tags" as "tags" on "tags__pivot"."tag_id" = "tags"."id"');
+    });
+
+    it('joins the pivot before the table hanging off it', function () {
+        $sql = compilePlan(['select' => [['column' => 'tags.name']]])->toSql();
+
+        expect(strpos($sql, '"invoice_tag" as "tags__pivot"'))
+            ->toBeLessThan(strpos($sql, '"tags" as "tags"'));
+    });
+
+    it('applies soft deletes to the related table of a many-to-many', function () {
+        $sql = compilePlan(['select' => [['column' => 'tags.name']]])->toSql();
+
+        expect($sql)->toContain('"tags__pivot"."tag_id" = "tags"."id" and "tags"."deleted_at" is null');
+    });
+
+    it('refuses to aggregate a parent column across a many-to-many join', function () {
+        compilePlan([
+            'select' => [
+                ['column' => 'tags.name'],
+                ['column' => 'total', 'function' => 'sum'],
+            ],
+            'group_by' => [['column' => 'tags.name']],
+        ]);
+    })->throws(CompilationException::class, 'inflate the result');
+
+    it('returns one row per link, not per invoice', function () {
+        $invoice = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $urgent = Tag::create(['name' => 'urgent']);
+        $review = Tag::create(['name' => 'review']);
+
+        $invoice->tags()->attach([$urgent->id, $review->id]);
+
+        $rows = compilePlan([
+            'select' => [['column' => 'invoice_id'], ['column' => 'tags.name', 'as' => 'tag']],
+            'sort' => [['column' => 'tags.name', 'direction' => 'asc']],
+        ], scopedSchema())->get();
+
+        expect($rows->pluck('tag')->all())->toBe(['review', 'urgent']);
+    });
+
+    it('counts across the link without inflating the parent', function () {
+        $first = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $second = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-02', 'total' => 20, 'status' => 'paid',
+        ]);
+
+        $urgent = Tag::create(['name' => 'urgent']);
+
+        $first->tags()->attach($urgent->id);
+        $second->tags()->attach($urgent->id);
+
+        $rows = compilePlan([
+            'select' => [
+                ['column' => 'tags.name', 'as' => 'tag'],
+                ['column' => 'tags.id', 'function' => 'count', 'as' => 'uses'],
+            ],
+            'group_by' => [['column' => 'tags.name']],
+        ], taggedSchema())->get();
+
+        expect($rows->pluck('uses', 'tag')->all())->toBe(['urgent' => 2]);
+    });
+
+    it('excludes a soft deleted row on the far side of the pivot', function () {
+        $invoice = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $kept = Tag::create(['name' => 'urgent']);
+        $gone = Tag::create(['name' => 'obsolete']);
+
+        $invoice->tags()->attach([$kept->id, $gone->id]);
+        $gone->delete();
+
+        $rows = compilePlan([
+            'select' => [['column' => 'tags.name', 'as' => 'tag']],
+            'filters' => [
+                'operator' => 'and',
+                'conditions' => [['column' => 'tags.name', 'operator' => 'in', 'value' => ['urgent', 'obsolete']]],
+            ],
+        ], scopedSchema())->get();
+
+        expect($rows->pluck('tag')->all())->toBe(['urgent']);
+    });
+});
+
+describe('pivot scopes', function () {
+    it('applies a pivot scope to the pivot join and not the related join', function () {
+        $schema = InvoiceSchema::make();
+        $schema->findRelation('tags')?->alwaysPivotScope(
+            fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join->whereNull("{$alias}.revoked_at"),
+        );
+
+        $sql = compilePlan(['select' => [['column' => 'tags.name']]], $schema)->toSql();
+
+        expect($sql)->toContain(
+            'on "invoices"."id" = "tags__pivot"."invoice_id" and "tags__pivot"."revoked_at" is null',
+        )->and($sql)->not->toContain('"tags"."revoked_at"');
+    });
+
+    it('applies a relation scope to the related join and not the pivot join', function () {
+        $schema = InvoiceSchema::make();
+        $schema->findRelation('tags')?->alwaysScope(
+            fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join->where("{$alias}.name", '!=', 'draft'),
+        );
+
+        $sql = compilePlan(['select' => [['column' => 'tags.name']]], $schema)->toSql();
+
+        expect($sql)->toContain('"tags__pivot"."tag_id" = "tags"."id" and "tags"."deleted_at" is null and "tags"."name" != ?')
+            ->and($sql)->not->toContain('"tags__pivot"."name"');
+    });
+
+    it('keeps a revoked link out of the results', function () {
+        $invoice = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $kept = Tag::create(['name' => 'urgent']);
+        $revoked = Tag::create(['name' => 'stale']);
+
+        $invoice->tags()->attach($kept->id);
+        $invoice->tags()->attach($revoked->id, ['revoked_at' => '2026-02-02 00:00:00']);
+
+        $schema = scopedSchema();
+        $schema->findRelation('tags')?->alwaysPivotScope(
+            fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join->whereNull("{$alias}.revoked_at"),
+        );
+
+        $rows = compilePlan([
+            'select' => [['column' => 'tags.name', 'as' => 'tag']],
+            'filters' => [
+                'operator' => 'and',
+                'conditions' => [['column' => 'tags.name', 'operator' => 'in', 'value' => ['urgent', 'stale']]],
+            ],
+        ], $schema)->get();
+
+        expect($rows->pluck('tag')->all())->toBe(['urgent']);
+    });
+
+    it('ignores a pivot scope on a relation that has no pivot', function () {
+        $schema = InvoiceSchema::make();
+        $schema->findRelation('lines')?->alwaysPivotScope(
+            fn (JoinClause $join, ?Authenticatable $user, string $alias) => $join->whereNull("{$alias}.nonexistent"),
+        );
+
+        $sql = compilePlan(['select' => [['column' => 'lines.quantity']]], $schema)->toSql();
+
+        expect($sql)->not->toContain('nonexistent');
+    });
+});
+
+describe('polymorphic relations', function () {
+    it('refuses to join a morph to many', function () {
+        $schema = InvoiceSchema::make()
+            ->relation('morphTags', fn (RelationDefinition $r) => $r->column('name'));
+
+        compilePlan(['select' => [['column' => 'morphTags.name']]], $schema);
+    })->throws(CompilationException::class, 'would match rows belonging to other parent types');
+
+    it('names the relation type it refused', function () {
+        $schema = InvoiceSchema::make()
+            ->relation('morphTags', fn (RelationDefinition $r) => $r->column('name'));
+
+        expect(fn () => compilePlan(['select' => [['column' => 'morphTags.name']]], $schema))
+            ->toThrow(CompilationException::class, 'The relation [morphTags] is a MorphToMany');
     });
 });
 
