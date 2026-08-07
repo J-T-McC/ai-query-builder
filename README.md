@@ -154,6 +154,41 @@ it. `--cost` reports what it weighs, broken down by plan property and by filter 
 php artisan ai-query:describe invoices --cost
 ```
 
+### Soft deletes
+
+Deleted rows are excluded everywhere, not just on the root model.
+
+Eloquent applies `SoftDeletingScope` to the root query, but Laravel applies no global scope to a
+join — so without help, a plan reading `lines.product.name` would read products deleted a year
+ago. The compiler adds the condition itself, on the join's `ON` clause:
+
+```sql
+left join "invoice_lines"
+       on "invoices"."id" = "invoice_lines"."invoice_id"
+      and "invoice_lines"."deleted_at" is null
+```
+
+On the `ON` clause rather than in the `WHERE` clause, because the difference is visible: in the
+`WHERE` clause this would turn every left join into an inner one, and an invoice whose only line
+was deleted would vanish from the report. On the `ON` clause the invoice stays and the line reads
+as null.
+
+The column comes from the model, so a model that renames it through `DELETED_AT` works without
+configuration. Nothing about this reaches the agent — it is invisible policy, like `alwaysScope`,
+and costs no contract tokens.
+
+If a resource genuinely needs the deleted rows — an audit view, a report on cancellations — opt in
+per relation:
+
+```php
+->relation('lines', fn (RelationDefinition $r) => $r
+    ->withTrashed()
+    ->column('quantity', fn (ColumnDefinition $c) => $c->aggregatable(['sum'])))
+```
+
+There is no `onlyTrashed()`. Declare `deleted_at` as a filterable column instead and let the plan
+say so out loud.
+
 ## Query plans
 
 An agent emits a plan. There is no `raw`, no `expression`, no `sql` key — not behind a config
@@ -548,6 +583,8 @@ invalid plan before deciding whether retries are worth the tokens.
   question nobody asked while looking like it answered the one they did.
 - A filter value that is not the kind of thing the column holds is rejected rather than bound.
   See [Filter values](#filter-values).
+- Soft-deleted rows are excluded from joined relations, not just from the root model.
+  See [Soft deletes](#soft-deletes).
 - Truncated results are flagged rather than passed off as complete.
 
 **It does not:**
@@ -555,7 +592,8 @@ invalid plan before deciding whether retries are worth the tokens.
 - Judge whether a question *should* be asked. Authorization of who may query what is your
   middleware and your `alwaysScope` closures.
 - Apply Eloquent global scopes to **joined** models — Laravel only applies them to the root
-  query. Anything that must hold for joined rows belongs in that relation's `alwaysScope`.
+  query. Soft deletes are the one exception, handled explicitly. Anything else that must hold for
+  joined rows belongs in that relation's `alwaysScope`.
 - Make query results trustworthy input for a later turn. Rows can contain text written by users;
   treat them as untrusted when they flow back into a prompt.
 - Rate limit. Add that at your middleware or agent layer.

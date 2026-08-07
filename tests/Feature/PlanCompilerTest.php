@@ -98,6 +98,7 @@ describe('joins', function () {
 
         expect($sql)
             ->toContain('left join "invoice_lines" on "invoices"."id" = "invoice_lines"."invoice_id"')
+            // Products do not soft delete, so that join carries the key alone.
             ->toContain('left join "products" on "invoice_lines"."product_id" = "products"."id"');
     });
 
@@ -119,6 +120,106 @@ describe('joins', function () {
         expect($sql)->toContain(
             'left join "products" on "invoice_lines"."product_id" = "products"."id" and "products"."type" = ?',
         );
+    });
+});
+
+describe('soft deletes on joins', function () {
+    it('excludes soft deleted rows from a joined relation', function () {
+        $sql = compilePlan(['select' => [['column' => 'lines.quantity']]])->toSql();
+
+        expect($sql)->toContain(
+            'left join "invoice_lines" on "invoices"."id" = "invoice_lines"."invoice_id" '.
+            'and "invoice_lines"."archived_at" is null',
+        );
+    });
+
+    it('reads the deleted at column from the model rather than assuming a name', function () {
+        // InvoiceLine renames it through DELETED_AT. A compiler that hardcoded
+        // the default would still pass the test above on a conventional model.
+        $sql = compilePlan(['select' => [['column' => 'lines.quantity']]])->toSql();
+
+        expect($sql)->toContain('"invoice_lines"."archived_at" is null')
+            ->and($sql)->not->toContain('"invoice_lines"."deleted_at"');
+    });
+
+    it('adds no condition for a relation whose model does not soft delete', function () {
+        $sql = compilePlan(['select' => [['column' => 'lines.product.name']]])->toSql();
+
+        // The negative lookahead is the assertion: the products join carries the
+        // key condition and nothing appended after it.
+        expect($sql)->toMatch(
+            '/left join "products" on "invoice_lines"\."product_id" = "products"\."id"(?! and)/',
+        );
+    });
+
+    it('keeps the condition on the on clause so a left join stays a left join', function () {
+        $invoice = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $product = Product::create(['name' => 'Widget', 'type' => 'widget']);
+
+        InvoiceLine::create([
+            'invoice_id' => $invoice->id, 'product_id' => $product->id, 'quantity' => 2,
+        ])->delete();
+
+        $rows = compilePlan([
+            'select' => [['column' => 'invoice_id'], ['column' => 'lines.quantity']],
+        ], scopedSchema())->get();
+
+        // The invoice's only line is deleted. In the WHERE clause this condition
+        // would drop the invoice entirely; on the ON clause the invoice stays
+        // and the line reads as null, which is what "ignore deleted" means.
+        expect($rows)->toHaveCount(1)
+            ->and($rows->first()->invoice_id)->toBe($invoice->id)
+            ->and($rows->first()->quantity)->toBeNull();
+    });
+
+    it('leaves a soft deleted row out of an aggregate over the relation', function () {
+        $invoice = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $product = Product::create(['name' => 'Widget', 'type' => 'widget']);
+
+        InvoiceLine::create(['invoice_id' => $invoice->id, 'product_id' => $product->id, 'quantity' => 2]);
+        InvoiceLine::create(['invoice_id' => $invoice->id, 'product_id' => $product->id, 'quantity' => 40])->delete();
+
+        $rows = compilePlan([
+            'select' => [['column' => 'lines.quantity', 'function' => 'sum', 'as' => 'total_qty']],
+        ], scopedSchema())->get();
+
+        expect($rows->first()->total_qty)->toBe(2);
+    });
+
+    it('includes soft deleted rows when the relation opts in', function () {
+        $schema = InvoiceSchema::make();
+        $schema->findRelation('lines')?->withTrashed();
+
+        $sql = compilePlan(['select' => [['column' => 'lines.quantity']]], $schema)->toSql();
+
+        expect($sql)->not->toContain('"invoice_lines"."archived_at" is null');
+    });
+
+    it('applies both the soft delete condition and a relation scope to the same join', function () {
+        $schema = InvoiceSchema::make();
+        $schema->findRelation('lines')?->alwaysScope(
+            fn (JoinClause $join) => $join->where('invoice_lines.quantity', '>', 0),
+        );
+
+        $sql = compilePlan(['select' => [['column' => 'lines.quantity']]], $schema)->toSql();
+
+        expect($sql)->toContain(
+            'and "invoice_lines"."archived_at" is null and "invoice_lines"."quantity" > ?',
+        );
+    });
+
+    it('does not add a second condition for a soft deleting root model', function () {
+        $sql = compilePlan(['select' => [['column' => 'invoice_id']]])->toSql();
+
+        // The root's exclusion comes from the model's global scope, in the
+        // WHERE clause. The join pass must not restate it.
+        expect(substr_count($sql, '"invoices"."deleted_at" is null'))->toBe(1);
     });
 });
 

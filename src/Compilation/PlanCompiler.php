@@ -124,7 +124,14 @@ final class PlanCompiler
                 default => throw CompilationException::unsupportedRelation($path, class_basename($relation)),
             };
 
-            $scopes = $schema->findRelation($path)?->alwaysScopes() ?? [];
+            $definition = $schema->findRelation($path);
+            $scopes = $definition?->alwaysScopes() ?? [];
+
+            // A join runs none of the related model's global scopes, so the
+            // soft-delete condition Eloquent would have added is applied here.
+            $deletedAt = $definition?->includesTrashed() === true
+                ? null
+                : $this->deletedAtColumn($relation->getRelated());
 
             // Left join, so a parent with no related rows is not dropped. The
             // relation's own scopes go on the ON clause rather than the WHERE
@@ -132,10 +139,15 @@ final class PlanCompiler
             $query->leftJoin($relation->getRelated()->getTable(), function (JoinClause $join) use (
                 $first,
                 $second,
+                $deletedAt,
                 $scopes,
                 $user,
             ): void {
                 $join->on($first, '=', $second);
+
+                if ($deletedAt !== null) {
+                    $join->whereNull($deletedAt);
+                }
 
                 foreach ($scopes as $scope) {
                     $scope($join, $user);
@@ -164,6 +176,20 @@ final class PlanCompiler
             buckets: $buckets,
             driver: $query->getModel()->getConnection()->getDriverName(),
         );
+    }
+
+    /**
+     * The qualified deleted-at column of a soft-deleting model, or null.
+     *
+     * Detected from the accessor the SoftDeletes trait adds rather than from
+     * the trait itself, so a model that renames the column through DELETED_AT
+     * is handled without a special case.
+     */
+    private function deletedAtColumn(Model $model): ?string
+    {
+        return method_exists($model, 'getQualifiedDeletedAtColumn')
+            ? $model->getQualifiedDeletedAtColumn()
+            : null;
     }
 
     /**

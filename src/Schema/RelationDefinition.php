@@ -24,6 +24,8 @@ final class RelationDefinition
     /** @var list<Closure> */
     private array $alwaysScopes = [];
 
+    private bool $withTrashed = false;
+
     public function __construct(private readonly string $name) {}
 
     public function describe(string $description): self
@@ -54,6 +56,28 @@ final class RelationDefinition
     public function alwaysScopes(): array
     {
         return $this->alwaysScopes;
+    }
+
+    /**
+     * Include soft-deleted rows from this relation.
+     *
+     * Excluded by default. A join does not run the related model's global
+     * scopes, so without this the compiler applying the deleted-at condition
+     * itself is the only thing keeping deleted rows out of an aggregate — and a
+     * deleted row reaching an aggregate is a wrong answer that looks like a
+     * right one. Including them is a deliberate choice by the schema author and
+     * cannot be expressed by a plan.
+     */
+    public function withTrashed(bool $include = true): self
+    {
+        $this->withTrashed = $include;
+
+        return $this;
+    }
+
+    public function includesTrashed(): bool
+    {
+        return $this->withTrashed;
     }
 
     public function name(): string

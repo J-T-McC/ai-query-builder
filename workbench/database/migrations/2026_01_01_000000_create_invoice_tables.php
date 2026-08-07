@@ -32,6 +32,9 @@ return new class extends Migration
             $table->foreignId('invoice_id')->constrained()->cascadeOnDelete();
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
             $table->unsignedInteger('quantity');
+            // Deliberately not named deleted_at: the compiler must read the
+            // column from the model rather than assume Laravel's default.
+            $table->softDeletes('archived_at');
             $table->timestamps();
         });
     }

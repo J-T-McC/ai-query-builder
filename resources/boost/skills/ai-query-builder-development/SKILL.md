@@ -75,6 +75,10 @@ Relations are declared with `relation()` and traversed by dotted path (`lines.pr
 `RelationDefinition::alwaysScope()` adds an `ON` condition — needed because Eloquent global
 scopes are **not** applied to joined models.
 
+Soft deletes are the one exception: the compiler adds `deleted_at is null` to the join itself,
+reading the column from the model. Do not write that condition by hand. `RelationDefinition::withTrashed()`
+opts a relation out when the deleted rows are the point.
+
 ### 4. Register the resource
 
 ```php
@@ -170,7 +174,8 @@ Key behaviours to rely on:
 - do not uncomment a whole generated schema; declare only what is needed
 - do not aggregate a parent column while joining a to-many relation — the compiler rejects it
   because the result would be silently inflated; aggregate on the joined side instead
-- do not rely on Eloquent global scopes for joined models; use `RelationDefinition::alwaysScope()`
+- do not rely on Eloquent global scopes for joined models; use `RelationDefinition::alwaysScope()`.
+  Soft deletes are handled for you, so an `alwaysScope` restating `deleted_at is null` is redundant
 - do not feed query results back into a prompt as trusted input
 - do not optimise the tool payload before enabling prompt caching. The payload is byte-identical
   between requests and sits at the front of the prefix, so a warm cache bills it at roughly a
