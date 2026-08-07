@@ -1,6 +1,43 @@
 # Release Notes
 
-## [Unreleased](https://github.com/j-t-mcc/ai-query-builder/compare/v0.1.1...HEAD)
+## [Unreleased](https://github.com/j-t-mcc/ai-query-builder/compare/v0.2.0...HEAD)
+
+## [v0.2.0](https://github.com/j-t-mcc/ai-query-builder/compare/v0.1.1...v0.2.0) - 2026-08-07
+
+**Two things: what a plan is allowed to say, and what it costs to say it.**
+
+A filter value is now checked against the kind of thing its column holds. Previously only
+`enum()` constrained a value, so `started_at >= "now-30d"` validated, compiled, bound and ran —
+matching every row on MySQL and none on SQLite, with the agent reporting the result as the
+answer. Types come from the model's casts, or `->typed()` where the casts don't say.
+
+Agents no longer compute dates. A date column permitting `between` also accepts `within` with a
+named range — `last_30_days`, `last_month`, `year_to_date`, and
+`last_<N>_<seconds|minutes|hours|days|weeks|months|years>`. The window stays in the plan and
+resolves on each run, so a stored plan keeps meaning what it said rather than freezing the day it
+was written.
+
+The contract also got cheaper to send. `ai-query:describe --cost` measures it,
+`PlanSchemaDetail::Generic` stops the plan schema growing with the resource schema, and
+`AiQueryBuilder::tools()` replaces one tool per resource with two. The README now documents prompt
+caching, which outranks all of it.
+
+### Breaking
+
+- Resource names are validated at registration. Anything outside `^[a-zA-Z0-9_-]{1,128}$` throws
+  `SchemaDefinitionException`, rather than reaching a provider as a 400.
+- `QueryDataTool::name()` is now `query_{resource}` instead of the class basename, so two tools on
+  one agent no longer collide. This changes the tool name a provider sees.
+- The plan schema no longer carries a `resource` property. The tool sets it, so a plan cannot
+  redirect a tool to another resource.
+- A filter value of the wrong type is rejected with `value_type_mismatch`. A plan that previously
+  ran with a malformed value now fails with a correctable error.
+- `SchemaContract::toArray()` gained a `type` key and `filters` includes `within`, so
+  `fingerprint()` values change once.
+
+### Requires
+
+PHP 8.3+, Laravel 13.16+
 
 ## [v0.1.1](https://github.com/j-t-mcc/ai-query-builder/compare/v0.1.0...v0.1.1) - 2026-08-06
 
@@ -14,6 +51,7 @@ package, so the manifest was corrected and the package re-submitted.
 
 ```bash
 composer require jtmcc/ai-query-builder
+
 
 ```
 **v0.1.0 is not installable.** Packagist matches the package name in `composer.json`
