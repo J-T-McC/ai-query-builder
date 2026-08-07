@@ -1,5 +1,47 @@
 # Release Notes
 
+## [v0.3.0](https://github.com/j-t-mcc/ai-query-builder/compare/v0.2.0...v0.3.0) - 2026-08-07
+
+**Joins. Every relation that can be joined, and three ways a join was returning the wrong rows.**
+
+Soft deletes now apply to joined relations, not just the root model. Laravel applies no global
+scope to a join, so a plan reading `lines.product.name` could read a product deleted a year ago.
+The condition goes on the `ON` clause, so a left join stays a left join and a parent whose only
+child was deleted still appears.
+
+Every joined table is aliased to its relation path. Two paths reaching the same table used to
+compile to two unaliased joins of it, which the database rejects outright as an ambiguous column
+reference.
+
+`belongsToMany`, `hasOneThrough`, `hasManyThrough`, `morphOne`, `morphMany` and `morphToMany` can
+now be traversed. Each compiles to the joins it needs — a pivot or an intermediate table where
+there is one — and counts as a single relation against `maxRelationDepth`. Polymorphic joins carry
+their type condition, so a table shared by several parent types no longer hands one of them
+another's rows.
+
+Pivot columns are addressable under a reserved `pivot` segment: `tags.pivot.assigned_at` is the
+link, `tags.name` is the thing it points at. `alwaysPivotScope()` constrains the link itself.
+
+### Breaking
+
+- A relation's `alwaysScope()` closure now receives the join alias as a third argument, and must
+  qualify columns with it rather than with the table name. Joined tables are aliased to their
+  relation path, so `products.type` no longer resolves where `lines__product.type` does.
+  Resource-level `alwaysScope()` is unaffected — the root table is not aliased.
+- Soft-deleted rows are excluded from joined relations. Reports that silently included them will
+  return different numbers. `withTrashed()` on a relation restores the old behaviour where it was
+  wanted.
+- `morphTo` raises `CompilationException` instead of compiling into a join against whatever table
+  the relation happened to resolve to. It cannot be joined: the table it points at is stored per
+  row rather than fixed by the schema.
+- `morphOne` and `morphMany` now constrain the join by morph type. A schema declaring one was
+  previously returning rows belonging to every other parent type sharing that table.
+- `pivot` is reserved as a relation name and raises `SchemaDefinitionException` if declared.
+
+### Requires
+
+PHP 8.3+, Laravel 13.16+
+
 ## [v0.2.0](https://github.com/j-t-mcc/ai-query-builder/compare/v0.1.1...v0.2.0) - 2026-08-07
 
 **Two things: what a plan is allowed to say, and what it costs to say it.**
@@ -49,6 +91,7 @@ package, so the manifest was corrected and the package re-submitted.
 
 ```bash
 composer require jtmcc/ai-query-builder
+
 
 
 ```
