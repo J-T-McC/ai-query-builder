@@ -12,8 +12,10 @@ use JTMcC\AiQueryBuilder\Schema\PivotDefinition;
 use JTMcC\AiQueryBuilder\Schema\RelationDefinition;
 use JTMcC\AiQueryBuilder\Schema\ResourceSchema;
 use JTMcC\AiQueryBuilder\Tests\Fixtures\InvoiceSchema;
+use Workbench\App\Models\Customer;
 use Workbench\App\Models\Invoice;
 use Workbench\App\Models\InvoiceLine;
+use Workbench\App\Models\Note;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Tag;
 
@@ -609,19 +611,175 @@ describe('pivot columns', function () {
 });
 
 describe('polymorphic relations', function () {
-    it('refuses to join a morph to many', function () {
-        $schema = InvoiceSchema::make()
-            ->relation('morphTags', fn (RelationDefinition $r) => $r->column('name'));
+    $noted = fn (): ResourceSchema => scopedSchema()
+        ->relation('notes', fn (RelationDefinition $r) => $r
+            ->column('body', fn (ColumnDefinition $c) => $c->filterable(['='])->groupable()->sortable()));
 
-        compilePlan(['select' => [['column' => 'morphTags.name']]], $schema);
-    })->throws(CompilationException::class, 'would match rows belonging to other parent types');
+    $morphTagged = fn (): ResourceSchema => scopedSchema()
+        ->relation('morphTags', fn (RelationDefinition $r) => $r
+            ->column('name', fn (ColumnDefinition $c) => $c->filterable(['=', 'in'])->sortable()));
+
+    it('constrains a morph many by its type', function () use ($noted) {
+        $sql = compilePlan(['select' => [['column' => 'notes.body']]], $noted())->toSql();
+
+        expect($sql)->toContain('"invoices"."id" = "notes"."notable_id" and "notes"."notable_type" = ?');
+    });
+
+    it('does not read another parent type through a morph many', function () use ($noted) {
+        $invoice = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $product = Product::create(['name' => 'Widget', 'type' => 'widget']);
+
+        $invoice->notes()->create(['body' => 'about the invoice']);
+
+        // Same notes table, same id, different parent type. Without the morph
+        // condition the invoice would pick this up as one of its own.
+        $product->notes()->create(['body' => 'about the product']);
+
+        $rows = compilePlan([
+            'select' => [['column' => 'notes.body', 'as' => 'note']],
+        ], $noted())->get();
+
+        expect($rows->pluck('note')->all())->toBe(['about the invoice']);
+    });
+
+    it('constrains a morph to many by the type on its pivot', function () use ($morphTagged) {
+        $sql = compilePlan(['select' => [['column' => 'morphTags.name']]], $morphTagged())->toSql();
+
+        expect($sql)->toContain(
+            '"invoices"."id" = "morphTags__pivot"."taggable_id" '.
+            'and "morphTags__pivot"."taggable_type" = ?',
+        );
+    });
+
+    it('does not read another parent type through a morph to many', function () use ($morphTagged) {
+        $invoice = Invoice::create([
+            'tenant_id' => 1, 'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $product = Product::create(['name' => 'Widget', 'type' => 'widget']);
+
+        $mine = Tag::create(['name' => 'mine']);
+        $theirs = Tag::create(['name' => 'theirs']);
+
+        $invoice->morphTags()->attach($mine->id);
+        $product->morphTags()->attach($theirs->id);
+
+        $rows = compilePlan([
+            'select' => [['column' => 'morphTags.name', 'as' => 'tag']],
+        ], $morphTagged())->get();
+
+        expect($rows->pluck('tag')->all())->toBe(['mine']);
+    });
+
+    it('treats a morph many as to-many for fan-out', function () use ($noted) {
+        // An invoice with three notes would be summed three times.
+        compilePlan([
+            'select' => [
+                ['column' => 'notes.body'],
+                ['column' => 'total', 'function' => 'sum'],
+            ],
+            'group_by' => [['column' => 'notes.body']],
+        ], $noted());
+    })->throws(CompilationException::class, 'inflate the result');
+
+    it('refuses a morph to, which has no table to join', function () {
+        $schema = ResourceSchema::make()
+            ->for(Note::class)
+            ->name('notes')
+            ->column('body')
+            ->relation('notable', fn (RelationDefinition $r) => $r->column('id'));
+
+        compilePlan(['select' => [['column' => 'notable.id']]], $schema);
+    })->throws(CompilationException::class, 'stored per row rather than fixed by the schema');
 
     it('names the relation type it refused', function () {
-        $schema = InvoiceSchema::make()
-            ->relation('morphTags', fn (RelationDefinition $r) => $r->column('name'));
+        $schema = ResourceSchema::make()
+            ->for(Note::class)
+            ->name('notes')
+            ->column('body')
+            ->relation('notable', fn (RelationDefinition $r) => $r->column('id'));
 
-        expect(fn () => compilePlan(['select' => [['column' => 'morphTags.name']]], $schema))
-            ->toThrow(CompilationException::class, 'The relation [morphTags] is a MorphToMany');
+        expect(fn () => compilePlan(['select' => [['column' => 'notable.id']]], $schema))
+            ->toThrow(CompilationException::class, 'The relation [notable] is a MorphTo');
+    });
+});
+
+describe('through relations', function () {
+    $customers = fn (): ResourceSchema => ResourceSchema::make()
+        ->for(Customer::class)
+        ->name('customers')
+        ->column('id', fn (ColumnDefinition $c) => $c->as('customer_id')->aggregatable(['count'])->sortable())
+        ->column('name', fn (ColumnDefinition $c) => $c->filterable(['='])->groupable()->sortable())
+        ->relation('lines', fn (RelationDefinition $r) => $r
+            ->column('quantity', fn (ColumnDefinition $c) => $c->aggregatable(['sum'])->groupable()->sortable()))
+        ->relation('firstLine', fn (RelationDefinition $r) => $r
+            ->column('quantity', fn (ColumnDefinition $c) => $c->aggregatable(['sum'])));
+
+    it('joins the intermediate table then the far one', function () use ($customers) {
+        $sql = compilePlan(['select' => [['column' => 'lines.quantity']]], $customers())->toSql();
+
+        expect($sql)
+            ->toContain('left join "invoices" as "lines__through" on "customers"."id" = "lines__through"."customer_id"')
+            ->toContain('left join "invoice_lines" as "lines" on "lines__through"."id" = "lines"."invoice_id"');
+    });
+
+    it('applies the intermediate model soft deletes to the intermediate join', function () use ($customers) {
+        // Invoices soft delete. A line hanging off a deleted invoice must not be
+        // reachable through it, and the condition belongs on the join that
+        // reaches the invoice, not the one that reaches the line.
+        $sql = compilePlan(['select' => [['column' => 'lines.quantity']]], $customers())->toSql();
+
+        expect($sql)->toContain('"customers"."id" = "lines__through"."customer_id" '.
+            'and "lines__through"."deleted_at" is null');
+    });
+
+    it('does not reach a row through a deleted intermediate', function () use ($customers) {
+        $customer = Customer::create(['name' => 'Acme']);
+        $product = Product::create(['name' => 'Widget', 'type' => 'widget']);
+
+        $kept = Invoice::create([
+            'tenant_id' => 1, 'customer_id' => $customer->id,
+            'issued_at' => '2026-02-01', 'total' => 10, 'status' => 'paid',
+        ]);
+
+        $deleted = Invoice::create([
+            'tenant_id' => 1, 'customer_id' => $customer->id,
+            'issued_at' => '2026-02-02', 'total' => 20, 'status' => 'paid',
+        ]);
+
+        InvoiceLine::create(['invoice_id' => $kept->id, 'product_id' => $product->id, 'quantity' => 2]);
+        InvoiceLine::create(['invoice_id' => $deleted->id, 'product_id' => $product->id, 'quantity' => 40]);
+
+        $deleted->delete();
+
+        $rows = compilePlan([
+            'select' => [['column' => 'lines.quantity', 'function' => 'sum', 'as' => 'total_qty']],
+        ], $customers())->get();
+
+        expect($rows->first()->total_qty)->toBe(2);
+    });
+
+    it('treats a has many through as to-many for fan-out', function () use ($customers) {
+        // Counting customers while joining to their lines counts each customer
+        // once per line, two joins away.
+        compilePlan([
+            'select' => [
+                ['column' => 'lines.quantity'],
+                ['column' => 'customer_id', 'function' => 'count'],
+            ],
+            'group_by' => [['column' => 'lines.quantity']],
+        ], $customers());
+    })->throws(CompilationException::class, 'inflate the result');
+
+    it('does not treat a has one through as to-many', function () use ($customers) {
+        $sql = compilePlan([
+            'select' => [['column' => 'firstLine.quantity', 'function' => 'sum']],
+        ], $customers())->toSql();
+
+        expect($sql)->toContain('SUM("firstLine"."quantity")');
     });
 });
 

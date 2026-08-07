@@ -15,9 +15,17 @@ return new class extends Migration
             $table->timestamps();
         });
 
+        Schema::create('customers', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+
         Schema::create('invoices', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('tenant_id')->index();
+            // Nullable so the invoice tests that predate customers still pass.
+            $table->foreignId('customer_id')->nullable()->constrained()->cascadeOnDelete();
             $table->date('issued_at');
             $table->decimal('total', 12, 2);
             $table->string('status');
@@ -44,6 +52,22 @@ return new class extends Migration
             $table->timestamp('revoked_at')->nullable();
         });
 
+        // A polymorphic one-to-many. Two parent types share the table, which is
+        // what makes the morph type condition on the join load-bearing.
+        Schema::create('notes', function (Blueprint $table) {
+            $table->id();
+            $table->string('body');
+            $table->morphs('notable');
+            $table->timestamps();
+        });
+
+        // A polymorphic many-to-many, where the type sits on the pivot.
+        Schema::create('taggables', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('tag_id')->constrained()->cascadeOnDelete();
+            $table->morphs('taggable');
+        });
+
         Schema::create('invoice_lines', function (Blueprint $table) {
             $table->id();
             $table->foreignId('invoice_id')->constrained()->cascadeOnDelete();
@@ -59,9 +83,12 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('invoice_lines');
+        Schema::dropIfExists('taggables');
+        Schema::dropIfExists('notes');
         Schema::dropIfExists('invoice_tag');
         Schema::dropIfExists('tags');
         Schema::dropIfExists('invoices');
+        Schema::dropIfExists('customers');
         Schema::dropIfExists('products');
     }
 };

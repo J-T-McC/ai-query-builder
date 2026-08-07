@@ -11,7 +11,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
+use Illuminate\Database\Eloquent\Relations\HasOneOrManyThrough;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Grammar;
@@ -127,11 +130,12 @@ final class PlanCompiler
                 throw CompilationException::unsupportedRelation($path, get_debug_type($relation));
             }
 
-            // A polymorphic relation needs its morph type on the join, or it
-            // matches rows belonging to every other type that shares the table.
-            // Until that is implemented, refusing is the only safe answer.
-            if ($relation instanceof MorphToMany || $relation instanceof MorphOneOrMany) {
-                throw CompilationException::unsupportedPolymorphicRelation($path, class_basename($relation));
+            // MorphTo is the one polymorphic relation that cannot be joined at
+            // all: which table it points at is a value in the rows, so there is
+            // no table to name in the FROM clause. Checked before BelongsTo,
+            // which it extends and would otherwise be joined as.
+            if ($relation instanceof MorphTo) {
+                throw CompilationException::unjoinableRelation($path, class_basename($relation));
             }
 
             $parentAlias = $aliases[implode('.', $segments)];
@@ -155,8 +159,24 @@ final class PlanCompiler
                     $this->joinPivot($query, $relation, $parentAlias, $alias, $definition, $user),
                     $alias.'.'.$relation->getRelatedKeyName(),
                 ],
+                // Also two joins, for the same reason: the intermediate table
+                // stands between the parent and the table actually being read.
+                $relation instanceof HasOneOrManyThrough => [
+                    $this->joinThrough($query, $relation, $parentAlias, $alias),
+                    $alias.'.'.$relation->getForeignKeyName(),
+                ],
                 default => throw CompilationException::unsupportedRelation($path, class_basename($relation)),
             };
+
+            // A polymorphic has-many shares its table with every other parent
+            // type, so without this the join reads another model's rows. The
+            // many-to-many form carries its type on the pivot instead, and is
+            // handled where the pivot is joined.
+            $morphType = $relation instanceof MorphOneOrMany
+                ? $alias.'.'.$relation->getMorphType()
+                : null;
+
+            $morphClass = $relation instanceof MorphOneOrMany ? $relation->getMorphClass() : null;
 
             $scopes = $definition?->alwaysScopes() ?? [];
 
@@ -173,11 +193,17 @@ final class PlanCompiler
                 $first,
                 $second,
                 $deletedAt,
+                $morphType,
+                $morphClass,
                 $scopes,
                 $alias,
                 $user,
             ): void {
                 $join->on($first, '=', $second);
+
+                if ($morphType !== null) {
+                    $join->where($morphType, '=', $morphClass);
+                }
 
                 if ($deletedAt !== null) {
                     $join->whereNull($deletedAt);
@@ -198,9 +224,11 @@ final class PlanCompiler
             }
 
             // A many-to-many always multiplies parent rows, so it needs no test
-            // beyond its type. The fan-out guard reads this.
+            // beyond its type. The two `-one-` forms never do. The fan-out guard
+            // reads this.
             if ($relation instanceof BelongsToMany
-                || ($relation instanceof HasOneOrMany && ! $relation instanceof HasOne)) {
+                || ($relation instanceof HasOneOrMany && ! $relation instanceof HasOne)
+                || ($relation instanceof HasOneOrManyThrough && ! $relation instanceof HasOneThrough)) {
                 $toMany[$path] = true;
             }
         }
@@ -252,12 +280,68 @@ final class PlanCompiler
                 $pivotAlias.'.'.$relation->getForeignPivotKeyName(),
             );
 
+            // A polymorphic many-to-many keeps its type on the pivot, so the
+            // condition belongs on this join rather than the related one.
+            if ($relation instanceof MorphToMany) {
+                $join->where($pivotAlias.'.'.$relation->getMorphType(), '=', $relation->getMorphClass());
+            }
+
             foreach ($scopes as $scope) {
                 $scope($join, $user, $pivotAlias);
             }
         });
 
         return $pivotAlias.'.'.$relation->getRelatedPivotKeyName();
+    }
+
+    /**
+     * Join the intermediate table of a through relation, and return the side of
+     * the condition that will join the far table to it.
+     *
+     * `getParent()` is the *through* model here, not the far parent — the base
+     * relation constructor is handed the intermediate. That is what makes the
+     * intermediate's own soft deletes reachable, and they matter: a line item
+     * hanging off a deleted invoice must not be reachable through it.
+     *
+     * @param  Builder<Model>  $query
+     * @param  HasOneOrManyThrough<Model, Model, Model, mixed>  $relation
+     */
+    private function joinThrough(
+        Builder $query,
+        HasOneOrManyThrough $relation,
+        string $parentAlias,
+        string $alias,
+    ): string {
+        $through = $relation->getParent();
+        $throughAlias = self::throughAliasFor($alias);
+        $deletedAt = $this->deletedAtColumn($through, $throughAlias);
+
+        $query->leftJoin($through->getTable()." as {$throughAlias}", function (JoinClause $join) use (
+            $relation,
+            $parentAlias,
+            $throughAlias,
+            $deletedAt,
+        ): void {
+            $join->on(
+                $parentAlias.'.'.$relation->getLocalKeyName(),
+                '=',
+                $throughAlias.'.'.$relation->getFirstKeyName(),
+            );
+
+            if ($deletedAt !== null) {
+                $join->whereNull($deletedAt);
+            }
+        });
+
+        return $throughAlias.'.'.$relation->getSecondLocalKeyName();
+    }
+
+    /**
+     * The SQL alias for the intermediate table of a through relation.
+     */
+    public static function throughAliasFor(string $alias): string
+    {
+        return $alias.'__through';
     }
 
     /**

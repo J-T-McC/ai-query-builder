@@ -87,10 +87,17 @@ qualify columns with it, not with the table name:
     ->where("{$alias}.type", '=', 'widget'))
 ```
 
-`HasOne`, `HasMany`, `BelongsTo` and `BelongsToMany` can be traversed. A `belongsToMany` compiles
-to two joins (pivot, then related table), counts as one relation for `maxRelationDepth`, and always
-counts as to-many for fan-out. Constrain the link itself with `alwaysPivotScope()`, which lands on
-the pivot join. Polymorphic relations are refused.
+`HasOne`, `HasMany`, `BelongsTo`, `BelongsToMany`, `HasOneThrough`, `HasManyThrough`, `MorphOne`,
+`MorphMany` and `MorphToMany` can be traversed. Only `MorphTo` is refused — the table it points at
+is a value in the rows, so there is nothing to join to.
+
+A `belongsToMany` compiles to two joins (pivot, then related table); a through relation likewise
+(intermediate, then far table). Both count as one relation for `maxRelationDepth`. `belongsToMany`
+and `hasManyThrough` always count as to-many for fan-out; the `-one-` forms never do. Constrain a
+many-to-many link itself with `alwaysPivotScope()`, which lands on the pivot join.
+
+A polymorphic join always carries its type condition — on the related table for `morphOne` and
+`morphMany`, on the pivot for `morphToMany`. Do not add one by hand.
 
 Pivot columns are declared with `pivot()` and addressed under a reserved `pivot` segment
 (`tags.pivot.assigned_at`), which keeps them distinct from a related column of the same name. The

@@ -223,10 +223,8 @@ use `alwaysPivotScope`. It lands on the pivot join, where `alwaysScope` lands on
     ->column('name'))
 ```
 
-Polymorphic relations (`morphToMany`, `morphMany`, `morphOne`) are refused with an error. Joining
-one without its type condition would match rows belonging to every other parent type sharing that
-table, and returning another model's rows is worse than declining the query. Expose the related
-model as its own resource instead.
+See also [polymorphic relations](#polymorphic-relations), where the type condition lands on the
+pivot rather than the related table.
 
 #### Pivot columns
 
@@ -267,6 +265,46 @@ filter-value checking for free, exactly as a root column would.
 Cost, measured on the README's own schema: one declared pivot column adds **124 bytes** to the
 contract (prompt plus JSON Schema), of which the `pivot.` segment is 6. Two extra tokens per pivot
 column is the whole price of the disambiguation.
+
+### Through relations
+
+`hasManyThrough` and `hasOneThrough` are traversed like any other relation, and compile to two
+joins — the intermediate table, then the far one:
+
+```sql
+left join "invoices"      as "lines__through" on "customers"."id" = "lines__through"."customer_id"
+                                             and "lines__through"."deleted_at" is null
+left join "invoice_lines" as "lines"          on "lines__through"."id" = "lines"."invoice_id"
+```
+
+The intermediate table's own soft deletes are applied, and that condition matters more than it
+looks: without it, a line item hanging off a deleted invoice is still reachable *through* the
+customer, even though the invoice itself is gone.
+
+Like a many-to-many, a through relation counts as **one** relation for `maxRelationDepth`.
+`hasManyThrough` counts as to-many for fan-out; `hasOneThrough` does not.
+
+### Polymorphic relations
+
+`morphOne`, `morphMany` and `morphToMany` are supported. The type condition goes on the join:
+
+```sql
+-- morphMany: on the related table
+left join "notes" as "notes" on "invoices"."id" = "notes"."notable_id"
+                            and "notes"."notable_type" = ?
+
+-- morphToMany: on the pivot, which is where the type is stored
+left join "taggables" as "tags__pivot" on "invoices"."id" = "tags__pivot"."taggable_id"
+                                      and "tags__pivot"."taggable_type" = ?
+```
+
+This condition is load-bearing rather than cosmetic. A `notes` table shared by invoices and
+products will hand an invoice the products' notes without it — not an error, just another model's
+rows quietly mixed into the answer.
+
+**`morphTo` is refused**, and always will be. Which table it points at is a value stored per row
+rather than a fact about the schema, so there is no table to name in the `FROM` clause. Expose
+each concrete related model as its own resource instead.
 
 ### Soft deletes
 
@@ -699,8 +737,8 @@ invalid plan before deciding whether retries are worth the tokens.
   See [Filter values](#filter-values).
 - Soft-deleted rows are excluded from joined relations, not just from the root model.
   See [Soft deletes](#soft-deletes).
-- A polymorphic relation is refused rather than joined without its type condition, which would
-  return rows belonging to another model entirely.
+- A polymorphic join always carries its type condition, so a table shared by several parent types
+  never hands one of them another's rows. See [Polymorphic relations](#polymorphic-relations).
 - Truncated results are flagged rather than passed off as complete.
 
 **It does not:**
@@ -719,9 +757,12 @@ invalid plan before deciding whether retries are worth the tokens.
 - **Fan-out aggregates are refused.** Aggregating an invoice column while joining to its lines
   would count each invoice once per line and return a plausible, inflated number, so the compiler
   rejects it. Aggregate a column on the joined side instead.
-- Polymorphic relations are rejected rather than compiled into something subtly wrong.
+- `morphTo` cannot be joined and is rejected. The table it points at is a value in the rows, not a
+  fact about the schema.
 - Pivot column types are not inferred, because the intermediate table usually has no model to
   infer from. Declare them with `typed()`.
+- A through relation's intermediate table is joined but not addressable — there is no path segment
+  for it, the way `pivot` addresses a many-to-many's.
 - Statement timeouts require pgsql, mysql or mariadb. On other drivers a non-null timeout raises
   rather than being silently ignored.
 - No unions, no pagination, no cross-resource joins yet.
