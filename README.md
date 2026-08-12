@@ -173,6 +173,40 @@ Register it:
 ],
 ```
 
+Registering makes the resource *available*; it isn't exposed to any agent yet. An agent sees only
+the resources its tools name — and the name is the one the schema declared with `->name('invoices')`,
+not the class name:
+
+```php
+use JTMcC\AiQueryBuilder\Ai\QueryDataTool;
+use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasTools;
+use Laravel\Ai\Promptable;
+
+class InvoiceAnalystAgent implements Agent, HasTools
+{
+    use Promptable;
+
+    public function instructions(): string
+    {
+        return 'You answer billing questions. Use the query_invoices tool to read the '
+            .'invoices resource — never estimate an invoice figure from memory.';
+    }
+
+    public function tools(): iterable
+    {
+        return [new QueryDataTool('invoices', auth()->user())];
+    }
+}
+```
+
+```php
+$response = InvoiceAnalystAgent::make()->prompt('What did we invoice last month?');
+```
+
+Another agent handed a different list sees a different slice of the same registry — see
+[Connecting an AI layer](#connecting-an-ai-layer) for the multi-resource tools and other options.
+
 ### Column capabilities
 
 | Method | What it grants |
