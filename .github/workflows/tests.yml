@@ -64,10 +64,18 @@ jobs:
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress --no-scripts
           composer run prepare
 
+      # Static analysis and formatting are platform-independent, so running
+      # them on Windows adds no signal — only a bootstrap race: Larastan's
+      # parallel workers each boot the Testbench skeleton and rewrite its
+      # services manifest, and Windows refuses the concurrent rename. The
+      # Windows jobs still run the full test suite, which is where genuine
+      # platform differences (path handling) would surface.
       - name: PHPStan
+        if: runner.os != 'Windows'
         run: composer analyse
 
       - name: Linter
+        if: runner.os != 'Windows'
         run: composer lint:check
 
       - name: Type Coverage
