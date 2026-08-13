@@ -1,5 +1,29 @@
 # Release Notes
 
+## [v0.3.1](https://github.com/j-t-mcc/ai-query-builder/compare/v0.3.0...v0.3.1) - 2026-08-13
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### Bug Fixes
+
+* fix: reject non-positive row limits by @para1992 in https://github.com/J-T-McC/ai-query-builder/pull/12
+
+#### Dependencies
+
+* build(deps): Bump actions/cache from 4.3.0 to 6.1.0 by @dependabot[bot] in https://github.com/J-T-McC/ai-query-builder/pull/10
+
+#### Other Changes
+
+* docs: add an end-to-end laravel/ai agent example after schema registration by @J-T-McC in https://github.com/J-T-McC/ai-query-builder/pull/11
+
+### New Contributors
+
+* @dependabot[bot] made their first contribution in https://github.com/J-T-McC/ai-query-builder/pull/10
+* @para1992 made their first contribution in https://github.com/J-T-McC/ai-query-builder/pull/12
+
+**Full Changelog**: https://github.com/J-T-McC/ai-query-builder/compare/v0.3.0...v0.3.1
+
 ## [v0.3.0](https://github.com/j-t-mcc/ai-query-builder/compare/v0.2.0...v0.3.0) - 2026-08-07
 
 **Joins. Every relation that can be joined, and three ways a join was returning the wrong rows.**
@@ -91,6 +115,7 @@ package, so the manifest was corrected and the package re-submitted.
 
 ```bash
 composer require jtmcc/ai-query-builder
+
 
 
 
