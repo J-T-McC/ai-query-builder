@@ -204,8 +204,27 @@ class InvoiceAnalystAgent implements Agent, HasTools
 $response = InvoiceAnalystAgent::make()->prompt('What did we invoice last month?');
 ```
 
-Another agent handed a different list sees a different slice of the same registry — see
-[Connecting an AI layer](#connecting-an-ai-layer) for the multi-resource tools and other options.
+The same resource can be exposed to AI clients *outside* the application — Claude Desktop,
+Claude Code, Cursor — through the bundled MCP server (requires [laravel/mcp](https://laravel.com/docs/mcp)).
+The user's client brings the model; your app answers tool calls as the authenticated user,
+through the same validation and scoping:
+
+```php
+// config/ai-query-builder.php
+'mcp' => [
+    'resources' => ['invoices'],
+],
+
+// routes/ai.php
+use JTMcC\AiQueryBuilder\Mcp\QueryServer;
+use Laravel\Mcp\Facades\Mcp;
+
+Mcp::web('/mcp/query', QueryServer::class)->middleware('auth:sanctum');
+```
+
+Another agent handed a different list — or another MCP server exposing one — sees a different
+slice of the same registry. See [Connecting an AI layer](#connecting-an-ai-layer) for the
+multi-resource tools, the [MCP server](#mcp-server) in full, and other options.
 
 ### Column capabilities
 
