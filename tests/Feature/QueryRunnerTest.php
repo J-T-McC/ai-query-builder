@@ -77,6 +77,16 @@ describe('running', function () use ($plan) {
 });
 
 describe('guardrails', function () use ($plan) {
+    it('rejects a non-positive row cap', function () {
+        expect(fn () => runner()->maxRows(-2))
+            ->toThrow(ExecutionException::class, 'greater than zero');
+
+        config()->set('ai-query-builder.execution.max_rows', 0);
+
+        expect(fn () => runner())
+            ->toThrow(ExecutionException::class, 'greater than zero');
+    });
+
     it('flags a truncated result rather than passing it off as complete', function () use ($plan) {
         invoice();
         invoice();

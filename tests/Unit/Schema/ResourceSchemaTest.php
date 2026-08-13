@@ -139,6 +139,14 @@ it('rejects a default limit above the max limit', function () {
     ResourceSchema::make()->for(User::class)->name('users')->maxLimit(10)->defaultLimit(50);
 })->throws(SchemaDefinitionException::class);
 
+it('rejects a non-positive default limit', function () {
+    ResourceSchema::make()->for(User::class)->name('users')->defaultLimit(0);
+})->throws(SchemaDefinitionException::class, 'greater than zero');
+
+it('rejects a non-positive max limit', function () {
+    ResourceSchema::make()->for(User::class)->name('users')->maxLimit(-2);
+})->throws(SchemaDefinitionException::class, 'greater than zero');
+
 it('clamps the default limit when the max is lowered beneath it', function () {
     $limits = ResourceSchema::make()->for(User::class)->name('users')->maxLimit(10)->limits();
 

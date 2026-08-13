@@ -48,7 +48,7 @@ final class QueryRunner
     ) {
         $this->connection = $connection;
         $this->timeout = $timeout;
-        $this->maxRows = $maxRows;
+        $this->maxRows = $this->validateMaxRows($maxRows);
     }
 
     /**
@@ -87,9 +87,18 @@ final class QueryRunner
     public function maxRows(int $rows): self
     {
         $clone = clone $this;
-        $clone->maxRows = $rows;
+        $clone->maxRows = $this->validateMaxRows($rows);
 
         return $clone;
+    }
+
+    private function validateMaxRows(int $rows): int
+    {
+        if ($rows < 1) {
+            throw ExecutionException::invalidMaxRows($rows);
+        }
+
+        return $rows;
     }
 
     /**
