@@ -16,12 +16,11 @@ concurrency:
 
 jobs:
   tests:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     strategy:
       fail-fast: true
       matrix:
-        os: [ubuntu-latest, windows-latest]
         php: [8.3, 8.4, 8.5]
         laravel: [13.*]
         stability: [prefer-lowest, prefer-stable]
@@ -29,7 +28,7 @@ jobs:
           - laravel: 13.*
             testbench: 11.*
 
-    name: P${{ matrix.php }} - L${{ matrix.laravel }} - ${{ matrix.stability }} - ${{ matrix.os }}
+    name: P${{ matrix.php }} - L${{ matrix.laravel }} - ${{ matrix.stability }}
 
     steps:
       - name: Checkout code
@@ -53,10 +52,10 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: composer-${{ matrix.os }}-${{ matrix.php }}-L${{ matrix.laravel }}-${{ matrix.stability }}-${{ hashFiles('composer.json') }}
+          key: composer-ubuntu-latest-${{ matrix.php }}-L${{ matrix.laravel }}-${{ matrix.stability }}-${{ hashFiles('composer.json') }}
           restore-keys: |
-            composer-${{ matrix.os }}-${{ matrix.php }}-L${{ matrix.laravel }}-${{ matrix.stability }}-
-            composer-${{ matrix.os }}-${{ matrix.php }}-L${{ matrix.laravel }}-
+            composer-ubuntu-latest-${{ matrix.php }}-L${{ matrix.laravel }}-${{ matrix.stability }}-
+            composer-ubuntu-latest-${{ matrix.php }}-L${{ matrix.laravel }}-
 
       - name: Install dependencies
         run: |
@@ -64,28 +63,14 @@ jobs:
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress --no-scripts
           composer run prepare
 
-      # Static analysis and formatting are platform-independent, so running
-      # them on Windows adds no signal — only a bootstrap race: Larastan's
-      # parallel workers each boot the Testbench skeleton and rewrite its
-      # services manifest, and Windows refuses the concurrent rename. The
-      # Windows jobs still run the full test suite, which is where genuine
-      # platform differences (path handling) would surface.
       - name: PHPStan
-        if: runner.os != 'Windows'
         run: composer analyse
 
       - name: Linter
-        if: runner.os != 'Windows'
         run: composer lint:check
 
       - name: Type Coverage
-        if: runner.os != 'Windows'
         run: composer test:types
 
       - name: Test Suite
-        if: runner.os != 'Windows'
         run: composer test:unit
-
-      - name: Test Suite (Windows)
-        if: runner.os == 'Windows'
-        run: vendor/bin/pest
