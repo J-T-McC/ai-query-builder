@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace JTMcC\AiQueryBuilder\Tests;
 
 use JTMcC\AiQueryBuilder\AiQueryBuilderServiceProvider;
+use Laravel\Mcp\Server\McpServiceProvider;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
 
@@ -16,6 +17,7 @@ abstract class TestCase extends Orchestra
     {
         return [
             AiQueryBuilderServiceProvider::class,
+            McpServiceProvider::class,
         ];
     }
 }

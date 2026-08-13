@@ -28,6 +28,7 @@
     "require-dev": {
         "larastan/larastan": "^3.9",
         "laravel/ai": "^0.10.2",
+        "laravel/mcp": "^0.9.3",
         "laravel/pao": "^1.0",
         "laravel/pint": "^1.29",
         "orchestra/testbench": "^11.0",
@@ -110,6 +111,7 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "suggest": {
-        "laravel/ai": "Register QueryDataTool on an agent to expose a resource to the Laravel AI SDK."
+        "laravel/ai": "Register QueryDataTool on an agent to expose a resource to the Laravel AI SDK.",
+        "laravel/mcp": "Register the bundled QueryServer in routes/ai.php to expose resources to MCP clients."
     }
 }
