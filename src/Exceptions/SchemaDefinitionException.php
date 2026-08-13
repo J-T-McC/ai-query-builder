@@ -85,4 +85,9 @@ class SchemaDefinitionException extends InvalidArgumentException
     {
         return new self("The {$name} limit must be greater than zero; [{$limit}] given.");
     }
+
+    public static function invalidExposureResolver(string $class): self
+    {
+        return new self("The exposure resolver [{$class}] must implement ResolvesExposedResources.");
+    }
 }

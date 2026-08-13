@@ -70,6 +70,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | MCP Exposure
+    |--------------------------------------------------------------------------
+    |
+    | What the bundled MCP QueryServer exposes when you register it in your
+    | routes/ai.php (requires laravel/mcp). Registering a resource above makes
+    | it queryable; this key decides whether the MCP door advertises it.
+    | Empty means the server registers no query tools at all.
+    |
+    | Accepts resource names, or the class-string of a ResolvesExposedResources
+    | implementation to decide per authenticated user at request time.
+    |
+    */
+
+    'mcp' => [
+
+        'resources' => [
+            //
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Schema Generator
     |--------------------------------------------------------------------------
     |

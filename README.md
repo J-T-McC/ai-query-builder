@@ -706,6 +706,96 @@ Stored plans stay safe because:
 A stored plan is also readable and diffable, so you can show users what a saved query does and grep
 your storage for every plan touching a column before you drop it.
 
+### MCP server
+
+The doors above serve an AI *inside* your application. The MCP door serves clients *outside* it:
+Claude Desktop, Claude Code, Cursor, or any MCP client a user points at your app. The model runs in
+the user's client against their subscription, so your application serves ordinary HTTP requests and
+pays nothing for inference. Don't wire your own in-app agent through it — the `laravel/ai` tools
+reach the same core in-process without the HTTP loop.
+
+Requires [laravel/mcp](https://laravel.com/docs/mcp):
+
+```shell
+composer require laravel/mcp
+```
+
+Expose resources in config, and register the bundled server in your `routes/ai.php` — behind
+authentication, which is the host's middleware choice exactly as with the HTTP endpoint:
+
+```php
+// config/ai-query-builder.php
+'mcp' => [
+    'resources' => ['invoices'],
+],
+
+// routes/ai.php
+use JTMcC\AiQueryBuilder\Mcp\QueryServer;
+use Laravel\Mcp\Facades\Mcp;
+
+Mcp::web('/mcp/query', QueryServer::class)->middleware('auth:sanctum');
+```
+
+The server carries the same pair of tools as the multi-resource agent setup:
+`describe_query_resource` hands the model a dictionary on request, and `query_data` runs plans —
+validated, scoped and capped identically to every other door, as the authenticated user
+(`$request->user()` under whatever middleware you applied). Registering a resource makes it
+queryable; this key decides whether the MCP door advertises it. Empty — the default — means the
+server registers no query tools at all.
+
+One server per audience is the MCP analog of one agent per audience. Subclass and pin the exposure:
+
+```php
+use JTMcC\AiQueryBuilder\Mcp\QueryServer;
+
+class AdminQueryServer extends QueryServer
+{
+    protected array|string $exposes = ['invoices', 'customers', 'audit_logs'];
+}
+
+// routes/ai.php
+Mcp::web('/mcp/admin', AdminQueryServer::class)->middleware(['auth:sanctum', 'can:view-admin']);
+```
+
+For per-user catalogues on a single endpoint, `$exposes` — and the config key — also accept a
+resolver class-string. It is consulted on every request, including the `tools/list` call that
+populates the client's tool picker, so two users on the same endpoint can see different resources:
+
+```php
+use Illuminate\Contracts\Auth\Authenticatable;
+use JTMcC\AiQueryBuilder\Mcp\Contracts\ResolvesExposedResources;
+
+class TenantResources implements ResolvesExposedResources
+{
+    public function resources(?Authenticatable $user): array
+    {
+        return $user?->isAdmin() ? ['invoices', 'customers'] : ['invoices'];
+    }
+}
+```
+
+Exposure is a catalogue decision, not the security boundary. Schema authorization — `visibleWhen`,
+`alwaysScope`, the validation gate — runs on every plan whatever these lists say, so a
+misconfigured exposure advertises a name; it cannot leak a row.
+
+Verify a server with the inspector, and test it with laravel/mcp's helpers:
+
+```shell
+php artisan mcp:inspector mcp/query
+```
+
+```php
+$response = QueryServer::actingAs($user)->tool(QueryResourcesTool::class, [
+    'resource' => 'invoices',
+    'select' => [['column' => 'total', 'function' => 'sum', 'as' => 'revenue']],
+]);
+
+$response->assertOk()->assertSee('revenue');
+```
+
+`Mcp::local()` servers work too, but run as an Artisan process with no authenticated user — treat
+them as a trusted, single-developer surface.
+
 ## In practice
 
 Two turns against a real application — a webhook proxy service — with one resource declared and

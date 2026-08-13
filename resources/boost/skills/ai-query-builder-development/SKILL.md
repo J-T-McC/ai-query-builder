@@ -163,6 +163,29 @@ Build prompt and schema from `SchemaContract::for($schema, $user)`, which expose
 **HTTP endpoint** — off by default. Set `ai-query-builder.routes.enabled` to true and keep an
 auth middleware in `routes.middleware`. Gives `POST {prefix}/{resource}/query`.
 
+**MCP server** (`laravel/mcp`, a suggested dependency) — for AI clients *outside* the app
+(Claude Desktop, Claude Code, Cursor). The user's client pays for inference; the app serves
+plain HTTP. Expose resources, then register the bundled server behind auth middleware:
+
+```php
+// config/ai-query-builder.php — empty by default; nothing is exposed until listed
+'mcp' => ['resources' => ['invoices']],
+
+// routes/ai.php
+use JTMcC\AiQueryBuilder\Mcp\QueryServer;
+use Laravel\Mcp\Facades\Mcp;
+
+Mcp::web('/mcp/query', QueryServer::class)->middleware('auth:sanctum');
+```
+
+Tools run as `$request->user()` with the same validation, scoping and caps as every other
+door. One server per audience: subclass `QueryServer` and set
+`protected array|string $exposes = [...]`. Per-user catalogues on one endpoint: point
+`$exposes` or `mcp.resources` at a class implementing
+`JTMcC\AiQueryBuilder\Mcp\Contracts\ResolvesExposedResources`. Verify with
+`php artisan mcp:inspector mcp/query`; test with
+`QueryServer::actingAs($user)->tool(QueryResourcesTool::class, [...])->assertOk()`.
+
 ### 7. Configure guardrails and auditing
 
 `ai-query-builder.execution` sets defaults for `connection`, `timeout` (ms) and `max_rows`. Each
@@ -207,6 +230,9 @@ Key behaviours to rely on:
 - do not document package internals here; keep the skill focused on adoption in Laravel apps
 - do not expose a resource without an `alwaysScope` for tenancy or ownership
 - do not enable `routes.enabled` without an authentication middleware
+- do not register an MCP server without auth middleware, and do not point the app's own
+  `laravel/ai` agent at its own MCP endpoint — in-process tools reach the same core without the
+  HTTP loop. Exposure lists are catalogue, not security; schema authorization runs regardless
 - do not uncomment a whole generated schema; declare only what is needed
 - do not aggregate a parent column while joining a to-many relation — the compiler rejects it
   because the result would be silently inflated; aggregate on the joined side instead
