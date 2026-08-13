@@ -80,4 +80,9 @@ class SchemaDefinitionException extends InvalidArgumentException
     {
         return new self("The default limit [{$default}] cannot exceed the max limit [{$max}].");
     }
+
+    public static function nonPositiveLimit(string $name, int $limit): self
+    {
+        return new self("The {$name} limit must be greater than zero; [{$limit}] given.");
+    }
 }

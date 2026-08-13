@@ -8,6 +8,11 @@ use RuntimeException;
 
 class ExecutionException extends RuntimeException
 {
+    public static function invalidMaxRows(int $rows): self
+    {
+        return new self("The maximum row count must be greater than zero; [{$rows}] given.");
+    }
+
     /**
      * Refused rather than ignored: silently dropping a timeout would leave the
      * caller believing a guardrail is in place when it is not.

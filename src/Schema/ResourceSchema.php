@@ -112,6 +112,10 @@ final class ResourceSchema
 
     public function defaultLimit(int $limit): self
     {
+        if ($limit < 1) {
+            throw SchemaDefinitionException::nonPositiveLimit('default', $limit);
+        }
+
         if ($limit > $this->maxLimit) {
             throw SchemaDefinitionException::defaultLimitAboveMax($limit, $this->maxLimit);
         }
@@ -126,6 +130,10 @@ final class ResourceSchema
      */
     public function maxLimit(int $limit): self
     {
+        if ($limit < 1) {
+            throw SchemaDefinitionException::nonPositiveLimit('max', $limit);
+        }
+
         $this->maxLimit = $limit;
         $this->defaultLimit = min($this->defaultLimit, $limit);
 
