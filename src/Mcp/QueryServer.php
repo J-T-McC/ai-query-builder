@@ -18,7 +18,9 @@ use Laravel\Mcp\Server;
  * Laravel AI agent per audience:
  *
  *     // routes/ai.php
- *     Mcp::web('/mcp/query', QueryServer::class)->middleware('auth:sanctum');
+ *     Mcp::oauthRoutes();
+ *
+ *     Mcp::web('/mcp/query', QueryServer::class)->middleware('auth:api');
  *
  *     // One endpoint per audience, each with its own exposure.
  *     class AdminQueryServer extends QueryServer
