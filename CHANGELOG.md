@@ -1,5 +1,16 @@
 # Release Notes
 
+## [v0.4.0](https://github.com/j-t-mcc/ai-query-builder/compare/v0.3.1...v0.4.0) - 2026-08-14
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### Enhancements
+
+* feat: expose query resources to MCP clients via a bundled server by @J-T-McC in https://github.com/J-T-McC/ai-query-builder/pull/13
+
+**Full Changelog**: https://github.com/J-T-McC/ai-query-builder/compare/v0.3.1...v0.4.0
+
 ## [v0.3.1](https://github.com/j-t-mcc/ai-query-builder/compare/v0.3.0...v0.3.1) - 2026-08-13
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
@@ -115,6 +126,7 @@ package, so the manifest was corrected and the package re-submitted.
 
 ```bash
 composer require jtmcc/ai-query-builder
+
 
 
 
