@@ -219,7 +219,10 @@ through the same validation and scoping:
 use JTMcC\AiQueryBuilder\Mcp\QueryServer;
 use Laravel\Mcp\Facades\Mcp;
 
-Mcp::web('/mcp/query', QueryServer::class)->middleware('auth:sanctum');
+Mcp::oauthRoutes();
+
+Mcp::web('/mcp/query', QueryServer::class)
+    ->middleware('auth:api');
 ```
 
 Another agent handed a different list — or another MCP server exposing one — sees a different
@@ -740,7 +743,10 @@ composer require laravel/mcp
 ```
 
 Expose resources in config, and register the bundled server in your `routes/ai.php` — behind
-authentication, which is the host's middleware choice exactly as with the HTTP endpoint:
+authentication, which is the host's middleware choice exactly as with the HTTP endpoint. OAuth via
+[Laravel Passport](https://laravel.com/docs/passport) is what MCP clients speak natively:
+`Mcp::oauthRoutes()` registers the discovery and client-registration endpoints, and the user
+approves the client in a browser against your app's own login — no tokens to copy:
 
 ```php
 // config/ai-query-builder.php
@@ -752,8 +758,16 @@ authentication, which is the host's middleware choice exactly as with the HTTP e
 use JTMcC\AiQueryBuilder\Mcp\QueryServer;
 use Laravel\Mcp\Facades\Mcp;
 
-Mcp::web('/mcp/query', QueryServer::class)->middleware('auth:sanctum');
+Mcp::oauthRoutes();
+
+Mcp::web('/mcp/query', QueryServer::class)
+    ->middleware('auth:api');
 ```
+
+Already on Sanctum and don't want Passport? Skip `Mcp::oauthRoutes()` and protect the route with
+`auth:sanctum` instead — the user creates an API token in your app and pastes it into their
+client's config as an `Authorization: Bearer` header. Either way, every tool call resolves to a
+real user.
 
 The server carries the same pair of tools as the multi-resource agent setup:
 `describe_query_resource` hands the model a dictionary on request, and `query_data` runs plans —
@@ -773,7 +787,7 @@ class AdminQueryServer extends QueryServer
 }
 
 // routes/ai.php
-Mcp::web('/mcp/admin', AdminQueryServer::class)->middleware(['auth:sanctum', 'can:view-admin']);
+Mcp::web('/mcp/admin', AdminQueryServer::class)->middleware(['auth:api', 'can:view-admin']);
 ```
 
 For per-user catalogues on a single endpoint, `$exposes` — and the config key — also accept a

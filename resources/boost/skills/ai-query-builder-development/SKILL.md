@@ -175,8 +175,14 @@ plain HTTP. Expose resources, then register the bundled server behind auth middl
 use JTMcC\AiQueryBuilder\Mcp\QueryServer;
 use Laravel\Mcp\Facades\Mcp;
 
-Mcp::web('/mcp/query', QueryServer::class)->middleware('auth:sanctum');
+Mcp::oauthRoutes();  // Passport OAuth — what MCP clients speak natively
+
+Mcp::web('/mcp/query', QueryServer::class)
+    ->middleware('auth:api');
 ```
+
+Sanctum works too: skip `Mcp::oauthRoutes()`, use `auth:sanctum`, and the user pastes an API
+token into their client config as a bearer header.
 
 Tools run as `$request->user()` with the same validation, scoping and caps as every other
 door. One server per audience: subclass `QueryServer` and set
