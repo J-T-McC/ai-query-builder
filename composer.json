@@ -27,7 +27,7 @@
     },
     "require-dev": {
         "larastan/larastan": "^3.9",
-        "laravel/ai": "^0.10.2",
+        "laravel/ai": "^0.11.0",
         "laravel/mcp": "^0.9.3",
         "laravel/pao": "^1.0",
         "laravel/pint": "^1.29",
